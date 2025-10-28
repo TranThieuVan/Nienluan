@@ -10,7 +10,7 @@ class AuthService {
   Future<bool> login(String email, String password) async {
     try {
       await pb.collection('users').authWithPassword(email, password);
-      print('Login success: ${pb.authStore.model?.id}');
+      print('Login success: ${pb.authStore.record?.id}');
       return true;
     } catch (e) {
       print('Login failed: $e');

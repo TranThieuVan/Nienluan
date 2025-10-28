@@ -13,7 +13,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-  final pbService = PocketBaseService();
+  final pbService = PocketBaseService.instance;
   bool isLoading = false;
 
   @override
@@ -50,21 +50,19 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => isLoading = true);
 
     try {
-      // 2. Gọi hàm login. Nếu hàm login() ném ra Exception (ví dụ: sai mật khẩu),
-      // nó sẽ nhảy sang khối catch. Nếu không, nó sẽ chạy tiếp.
+      // 2. Gọi hàm login
       await pbService.login(emailController.text, passwordController.text);
 
-      // 3. Nếu không có exception, login thành công. Ta kiểm tra role và điều hướng.
+      // 3. Lấy role và điều hướng (ĐÃ XÓA SNACKBAR THÀNH CÔNG)
       final role = pbService.getRole();
 
       if (role == 'employee') {
         _navigateTo(const EmployeeHome());
-        _showSnackbar('Đăng nhập thành công với vai trò Nhân viên!');
-      } else if (role == '') {
+        // ĐÃ XÓA SNACKBAR Ở ĐÂY
+      } else if (role == 'manager') {
         _navigateTo(const ManagerHome());
-        _showSnackbar('Đăng nhập thành công với vai trò Quản lý!');
+        // ĐÃ XÓA SNACKBAR Ở ĐÂY
       } else {
-        // Vai trò không hợp lệ
         pbService.logout();
         _showSnackbar(
           'Tài khoản có vai trò không xác định. Đã đăng xuất.',
@@ -72,17 +70,14 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
-      // Xử lý lỗi (bao gồm lỗi xác thực từ PocketBase và lỗi kết nối)
-      // Thường lỗi xác thực sẽ có code 400.
+      // 4. Xử lý lỗi (giữ nguyên, đã rất tốt)
       _showSnackbar(
         'Đăng nhập thất bại: Email hoặc mật khẩu không chính xác.',
         isError: true,
       );
-      // Bạn có thể dùng 'Lỗi: ${e.toString()}' để debug chi tiết hơn.
     } finally {
-      // Đặt isLoading về false
+      // 5. Tắt loading (ĐÃ XÓA FUTURE.DELAYED)
       if (mounted) {
-        await Future.delayed(const Duration(milliseconds: 500));
         setState(() => isLoading = false);
       }
     }
