@@ -1,25 +1,35 @@
-// LỖI 1 ĐÃ SỬA: Dư "package"
 import 'package:pocketbase/pocketbase.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:intl/intl.dart';
 import 'package:myshop/models/table.dart';
 import 'package:myshop/models/menu_item.dart';
 import 'package:myshop/models/order.dart';
-// import 'package:myshop/models/order_item.dart'; // Không cần
 import 'package:myshop/models/order_item_view.dart';
+// Import UserService
+import 'user_service.dart';
+// Import OrderViewModel (Tạm để ở đây)
+// import 'package:myshop/models/order_view.dart'; // Bỏ comment nếu bạn đã tạo file này
 
 class PocketBaseService {
-  // --- Singleton Pattern (Giữ nguyên) ---
+  // --- Singleton Pattern ---
   static final PocketBaseService _instance = PocketBaseService._internal();
   factory PocketBaseService() => _instance;
   static PocketBaseService get instance => _instance;
 
   final PocketBase pb;
+  // --- LỖI ĐÃ SỬA: Dùng late final ---
+  late final UserService users; // Service quản lý người dùng
 
   PocketBaseService._internal()
-    : pb = PocketBase(dotenv.env['POCKETBASE_URL'] ?? 'http://127.0.0.1:8091');
+    // Lấy URL từ .env, fallback về localhost
+    : pb = PocketBase(dotenv.env['POCKETBASE_URL'] ?? 'http://127.0.0.1:8091') {
+    // *** LỖI ĐÃ SỬA: Khởi tạo users trong body ***
+    // Khởi tạo service con, truyền instance `pb` hiện có
+    users = UserService(pb);
+  }
   // --- Hết phần Singleton ---
 
-  // --- Chức Năng Xác Thực (Giữ nguyên) ---
+  // --- Chức Năng Xác Thực ---
   Future<void> login(String email, String password) async {
     try {
       await pb.collection('users').authWithPassword(email, password);
@@ -36,7 +46,7 @@ class PocketBaseService {
     pb.authStore.clear();
   }
 
-  // --- Chức Năng Quản Lý Bàn (Giữ nguyên) ---
+  // --- Chức Năng Quản Lý Bàn ---
   Future<List<TableModel>> getTables() async {
     try {
       final records = await pb.collection('tables').getFullList(sort: 'name');
@@ -74,7 +84,7 @@ class PocketBaseService {
     }
   }
 
-  // --- Chức Năng Tạo Hóa Đơn Mới (Giữ nguyên) ---
+  // --- Chức Năng Tạo Hóa Đơn Mới ---
   Future<String> createOrderRecord(String tableId, double totalPrice) async {
     try {
       final record = await pb
@@ -117,7 +127,7 @@ class PocketBaseService {
     }
   }
 
-  // --- CÁC HÀM MỚI CHO LOGIC BÀN ĐÃ CÓ KHÁCH ---
+  // --- CÁC HÀM CHO LOGIC BÀN ĐÃ CÓ KHÁCH ---
 
   /// 1. Tìm hóa đơn (order) 'pending' của một bàn
   Future<OrderModel?> getPendingOrderForTable(String tableId) async {
@@ -187,7 +197,7 @@ class PocketBaseService {
     }
   }
 
-  /// 3. Xử lý "Thanh toán" (Giữ nguyên)
+  /// 3. Xử lý "Thanh toán"
   Future<void> checkoutOrder(String orderId, String tableId) async {
     try {
       await pb.collection('orders').update(orderId, body: {'status': 'paid'});
@@ -199,7 +209,7 @@ class PocketBaseService {
     }
   }
 
-  // --- HÀM MỚI CHO "GỌI THÊM" ---
+  // --- HÀM CHO "GỌI THÊM" ---
 
   /// 4. Cập nhật tổng tiền cho một hóa đơn đã tồn tại
   Future<void> updateOrderTotalPrice(
@@ -214,5 +224,111 @@ class PocketBaseService {
       print('Error updating order total price: $e');
       throw Exception('Failed to update order total price: $e');
     }
+  }
+
+  /// Lấy danh sách các hóa đơn đã hoàn thành ('paid') trong ngày hôm nay
+  /// Mở rộng (expand) thông tin bàn ('table') VÀ người tạo ('created_by')
+  Future<List<OrderViewModel>> getCompletedOrdersToday() async {
+    try {
+      final now = DateTime.now();
+      // Chuyển về UTC để so sánh với thời gian lưu trong PocketBase
+      final startOfDay = DateFormat("yyyy-MM-dd 00:00:00").format(now.toUtc());
+      final endOfDay = DateFormat("yyyy-MM-dd 23:59:59").format(now.toUtc());
+
+      final filter =
+          'status = "paid" && created >= "$startOfDay" && created <= "$endOfDay"';
+
+      final records = await pb
+          .collection('orders')
+          .getFullList(
+            filter: filter,
+            sort: '-created',
+            expand: 'table,created_by', // Mở rộng cả 'table' và 'created_by'
+          );
+
+      return records.map((record) {
+        // 1. Lấy RecordModel của bàn
+        RecordModel? tableRecord;
+        final tableExpand = record.get<List<RecordModel>>('expand.table');
+        if (tableExpand.isNotEmpty) {
+          tableRecord = tableExpand.first;
+        }
+
+        // 2. Lấy RecordModel của người tạo (collection 'users')
+        RecordModel? creatorRecord;
+        final creatorExpand = record.get<List<RecordModel>>(
+          'expand.created_by',
+        );
+        if (creatorExpand.isNotEmpty) {
+          creatorRecord = creatorExpand.first;
+        }
+
+        // Truyền record chính và các record đã expand
+        // LƯU Ý: Đảm bảo bạn đã định nghĩa OrderViewModel ở đâu đó
+        // (ví dụ: lib/models/order_view.dart)
+        return OrderViewModel.fromRecord(record, tableRecord, creatorRecord);
+      }).toList();
+    } catch (e) {
+      print('Error fetching completed orders: $e');
+      throw Exception('Failed to load completed orders: $e');
+    }
+  }
+} // End of PocketBaseService
+
+// *** MODEL VIEW CHO HÓA ĐƠN HOÀN THÀNH (Nên chuyển ra file riêng) ***
+// LƯU Ý: Lớp này nên được chuyển sang file riêng (ví dụ: lib/models/order_view.dart)
+class OrderViewModel {
+  final String id;
+  final String tableId;
+  final String tableName; // Tên bàn
+  final OrderStatus status;
+  final double totalPrice;
+  final String createdById;
+  final String createdByUsername; // Thêm tên người tạo hóa đơn
+  final DateTime created;
+  final DateTime updated;
+
+  OrderViewModel({
+    required this.id,
+    required this.tableId,
+    required this.tableName,
+    required this.status,
+    required this.totalPrice,
+    required this.createdById,
+    required this.createdByUsername, // Cập nhật Constructor
+    required this.created,
+    required this.updated,
+  });
+
+  factory OrderViewModel.fromRecord(
+    RecordModel record,
+    RecordModel? tableRecord,
+    RecordModel? creatorRecord, // Nhận thêm RecordModel của người tạo
+  ) {
+    // CẬP NHẬT: Thay thế 'username' bằng 'name' theo yêu cầu (Giả định trường 'name' có trong collection 'users')
+    // Nếu trường 'name' không tồn tại, nó sẽ là null.
+    final creatorName = creatorRecord?.getStringValue('name');
+
+    return OrderViewModel(
+      id: record.id,
+      tableId: record.getStringValue('table'),
+      tableName: tableRecord?.getStringValue('name') ?? 'N/A',
+      status: OrderStatus.fromString(record.getStringValue('status')),
+      totalPrice: record.getDoubleValue('total_price'),
+      createdById: record.getStringValue('created_by'),
+
+      // Lấy 'name' từ creatorRecord. Nếu null, rỗng, hoặc không có trường 'name', dùng email rồi mới ID (rút gọn)
+      createdByUsername: (creatorName?.isNotEmpty == true)
+          ? creatorName!
+          : (creatorRecord?.getStringValue('email') ?? // Fallback về email
+                'User ID: ${record.getStringValue('created_by').substring(0, 8)}...'), // Fallback cuối
+
+      created: DateTime.parse(
+        record.getStringValue('created'),
+      ).toLocal(), // Chuyển về giờ địa phương
+      updated: DateTime.parse(
+        record.getStringValue('updated'),
+      ).toLocal(), // Chuyển về giờ địa phương
+    );
   }
 }

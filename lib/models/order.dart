@@ -1,13 +1,24 @@
 import 'package:pocketbase/pocketbase.dart';
 
-/// Enum định nghĩa các trạng thái của Hóa đơn
-/// Giúp code an toàn hơn thay vì dùng String 'pending'
+// Enum trạng thái hóa đơn
 enum OrderStatus {
-  pending,
-  completed,
-  paid;
+  pending, // Chờ thanh toán / Đang phục vụ
+  completed, // Đã hoàn thành (cần thêm vào)
+  paid; // Đã thanh toán / Hoàn thành
 
-  /// Chuyển đổi từ String (lấy từ DB) sang Enum
+  // Getter 'display' cần thiết để hiển thị trạng thái bằng tiếng Việt
+  String get display {
+    switch (this) {
+      case OrderStatus.pending:
+        return 'Đang phục vụ';
+      case OrderStatus.completed:
+        return 'Đã hoàn thành'; // Hiển thị cho trạng thái completed
+      case OrderStatus.paid:
+        return 'Đã thanh toán';
+    }
+  }
+
+  // Phương thức chuyển đổi từ chuỗi (dùng trong PocketBaseService)
   static OrderStatus fromString(String? statusString) {
     switch (statusString) {
       case 'completed':
@@ -15,7 +26,7 @@ enum OrderStatus {
       case 'paid':
         return OrderStatus.paid;
       default:
-        return OrderStatus.pending; // Mặc định là 'pending'
+        return OrderStatus.pending; // Mặc định là pending
     }
   }
 
@@ -25,22 +36,26 @@ enum OrderStatus {
   }
 }
 
+// Model cơ bản cho bảng 'orders'
 class OrderModel {
   final String id;
-  final String tableId; // ID của bàn (từ relation 'table')
+  final String tableId;
   final OrderStatus status;
   final double totalPrice;
-  final String? createdById; // ID của user (từ relation 'created_by')
+  final String? createdById; // Đặt là nullable (String?)
+  final DateTime created;
+  final DateTime updated;
 
   OrderModel({
     required this.id,
     required this.tableId,
     required this.status,
     required this.totalPrice,
-    this.createdById, // Có thể null (vì không bắt buộc)
+    this.createdById, // Bỏ 'required' vì đã là nullable
+    required this.created,
+    required this.updated,
   });
 
-  /// Phương thức factory để chuyển đổi từ PocketBase RecordModel
   factory OrderModel.fromRecord(RecordModel record) {
     final createdBy = record.getStringValue('created_by');
 
@@ -49,11 +64,11 @@ class OrderModel {
       tableId: record.getStringValue('table'),
       status: OrderStatus.fromString(record.getStringValue('status')),
       totalPrice: record.getDoubleValue('total_price'),
-      createdById: createdBy.isNotEmpty ? createdBy : null,
+      createdById: createdBy.isNotEmpty
+          ? createdBy
+          : null, // Xử lý giá trị null
+      created: DateTime.parse(record.getStringValue('created')).toLocal(),
+      updated: DateTime.parse(record.getStringValue('updated')).toLocal(),
     );
   }
-
-  // Chúng ta sẽ không cần 'toJson' ngay
-  // vì khi tạo Hóa đơn, chúng ta sẽ gửi một Map<String, dynamic>
-  // trực tiếp từ service layer.
 }

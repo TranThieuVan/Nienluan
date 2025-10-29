@@ -5,6 +5,10 @@ import 'package:myshop/models/table.dart';
 // Import các màn hình Order
 import 'package:myshop/screens/order/order_detail_screen.dart';
 import 'package:myshop/screens/order/existing_order_screen.dart';
+// Import màn hình mới
+import 'package:myshop/screens/order/completed_orders_screen.dart';
+// --- IMPORT WIDGET MỚI ĐƯỢC TẠO ---
+import 'package:myshop/widgets/table_grid_view.dart';
 
 class EmployeeHome extends StatefulWidget {
   const EmployeeHome({super.key});
@@ -16,6 +20,7 @@ class EmployeeHome extends StatefulWidget {
 class _EmployeeHomeState extends State<EmployeeHome> {
   final PocketBaseService pbService = PocketBaseService.instance;
 
+  // Future lưu trữ trạng thái tải bàn
   late Future<List<TableModel>> _tablesFuture;
 
   @override
@@ -24,10 +29,15 @@ class _EmployeeHomeState extends State<EmployeeHome> {
     _loadTables();
   }
 
-  void _loadTables() {
-    setState(() {
-      _tablesFuture = pbService.getTables();
-    });
+  // Phương thức tải/làm mới danh sách bàn
+  Future<void> _loadTables() async {
+    // Dùng async để có thể dùng hàm này cho RefreshIndicator
+    if (mounted) {
+      setState(() {
+        _tablesFuture = pbService.getTables();
+      });
+    }
+    await _tablesFuture; // Chờ Future hoàn thành
   }
 
   void _logout(BuildContext context) {
@@ -38,42 +48,35 @@ class _EmployeeHomeState extends State<EmployeeHome> {
     );
   }
 
-  // --- HÀM ĐIỀU HƯỚNG QUAN TRỌNG (ĐÃ CẬP NHẬT) ---
+  void _navigateToCompletedOrders() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const CompletedOrdersScreen()),
+    );
+  }
+
+  /// Hàm xử lý khi nhấn vào bàn: Điều hướng đến màn hình tạo hoặc xem hóa đơn.
   void _onTableTapped(TableModel table) async {
-    // `result` sẽ là `true` nếu màn hình con (Order/Thanh toán)
-    // thực hiện một thay đổi và muốn màn hình này refresh.
     bool? didUpdate;
 
     if (table.isOccupied) {
-      // ---------------------------------------------------
-      // BÀN ĐỎ (CÓ KHÁCH) -> Mở màn hình Xem Hóa đơn
-      // ---------------------------------------------------
+      // BÀN ĐỎ (CÓ KHÁCH) -> Mở màn hình Xem/Gọi thêm Hóa đơn
       didUpdate = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (context) => ExistingOrderScreen(
-            table: table, // Truyền bàn có khách
-          ),
+          builder: (context) => ExistingOrderScreen(table: table),
         ),
       );
     } else {
-      // ---------------------------------------------------
-      // BÀN XANH (TRỐNG) -> Mở màn hình Tạo Hóa đơn
-      // ---------------------------------------------------
+      // BÀN XANH (TRỐNG) -> Mở màn hình Tạo Hóa đơn mới
       didUpdate = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (context) => OrderDetailScreen(
-            table: table, // Truyền bàn trống
-            // (Không truyền existingOrder)
-          ),
+          builder: (context) => OrderDetailScreen(table: table),
         ),
       );
     }
 
-    // --- TỰ ĐỘNG REFRESH ---
-    // Nếu màn hình con trả về `true` (ví dụ: sau khi Thanh toán hoặc Tạo HĐ)
-    // thì tự động tải lại danh sách bàn.
+    // TỰ ĐỘNG REFRESH nếu có cập nhật trạng thái bàn
     if (didUpdate == true && mounted) {
-      _loadTables();
+      await _loadTables();
     }
   }
 
@@ -85,6 +88,11 @@ class _EmployeeHomeState extends State<EmployeeHome> {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long, color: Colors.white),
+            tooltip: 'Xem hóa đơn đã hoàn thành',
+            onPressed: _navigateToCompletedOrders,
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: 'Đăng xuất',
@@ -115,19 +123,13 @@ class _EmployeeHomeState extends State<EmployeeHome> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Lỗi tải danh sách bàn: Vui lòng kiểm tra API Rules của collection "tables" trên PocketBase.',
+                      'Lỗi tải danh sách bàn. Chi tiết: ${snapshot.error}',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.red.shade700,
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Chi tiết lỗi: ${snapshot.error}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                     const SizedBox(height: 20),
                     ElevatedButton(
@@ -144,9 +146,8 @@ class _EmployeeHomeState extends State<EmployeeHome> {
           final tables = snapshot.data!;
           if (tables.isEmpty) {
             return RefreshIndicator(
-              onRefresh: () async => _loadTables(),
+              onRefresh: _loadTables,
               child: ListView(
-                // Dùng ListView để RefreshIndicator hoạt động
                 children: [
                   Center(
                     child: Padding(
@@ -165,70 +166,11 @@ class _EmployeeHomeState extends State<EmployeeHome> {
           }
 
           // ----- TRẠNG THÁI THÀNH CÔNG (CÓ DỮ LIỆU) -----
-          return RefreshIndicator(
-            onRefresh: () async {
-              _loadTables();
-            },
-            child: GridView.builder(
-              padding: const EdgeInsets.all(12.0),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 1.0,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: tables.length,
-              itemBuilder: (context, index) {
-                final table = tables[index];
-                final Color cardColor = table.isOccupied
-                    ? Colors.red.shade400
-                    : Colors.green.shade400;
-                const Color textColor = Colors.white;
-
-                return InkWell(
-                  onTap: () => _onTableTapped(table), // GỌI HÀM ĐIỀU HƯỚNG
-                  splashColor: Colors.white.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Card(
-                    elevation: 4.0,
-                    color: cardColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            table.isOccupied
-                                ? Icons.restaurant
-                                : Icons.event_seat,
-                            color: textColor,
-                            size: 32,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            table.name,
-                            style: const TextStyle(
-                              color: textColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          Text(
-                            table.displayStatus,
-                            style: TextStyle(
-                              color: textColor.withOpacity(0.9),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
+          // SỬ DỤNG WIDGET TableGridView ĐÃ TÁCH
+          return TableGridView(
+            tables: tables,
+            onRefresh: _loadTables,
+            onTableTapped: _onTableTapped,
           );
         },
       ),
