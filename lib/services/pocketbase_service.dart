@@ -2,13 +2,16 @@ import 'package:pocketbase/pocketbase.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
 import 'package:myshop/models/table.dart';
-import 'package:myshop/models/menu_item.dart';
+import 'package:myshop/models/menu_item.dart'; // Vẫn cần cho getOrderItemsWithDetails
 import 'package:myshop/models/order.dart';
 import 'package:myshop/models/order_item_view.dart';
-// Import UserService
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+// Import các service con
 import 'user_service.dart';
-// Import OrderViewModel (Tạm để ở đây)
-// import 'package:myshop/models/order_view.dart'; // Bỏ comment nếu bạn đã tạo file này
+import 'menu_service.dart'; // <-- IMPORT SERVICE MỚI
+// Import các view model
+import 'package:myshop/models/order_view.dart'; // <-- SỬA LẠI IMPORT
 
 class PocketBaseService {
   // --- Singleton Pattern ---
@@ -17,15 +20,16 @@ class PocketBaseService {
   static PocketBaseService get instance => _instance;
 
   final PocketBase pb;
-  // --- LỖI ĐÃ SỬA: Dùng late final ---
+  // --- Các service con ---
   late final UserService users; // Service quản lý người dùng
+  late final MenuService menuItems; // <-- THÊM SERVICE MỚI
 
   PocketBaseService._internal()
     // Lấy URL từ .env, fallback về localhost
     : pb = PocketBase(dotenv.env['POCKETBASE_URL'] ?? 'http://127.0.0.1:8091') {
-    // *** LỖI ĐÃ SỬA: Khởi tạo users trong body ***
     // Khởi tạo service con, truyền instance `pb` hiện có
     users = UserService(pb);
+    menuItems = MenuService(pb); // <-- KHỞI TẠO SERVICE MỚI
   }
   // --- Hết phần Singleton ---
 
@@ -69,21 +73,9 @@ class PocketBaseService {
   }
 
   // --- Chức Năng Quản Lý Menu ---
-  Future<List<MenuItemModel>> getMenu() async {
-    try {
-      final records = await pb
-          .collection('menu_items')
-          .getFullList(sort: 'name', filter: 'in_stock = true');
-      // Sửa lại: Dùng (record, pb) - 2 tham số vị trí
-      return records
-          .map((record) => MenuItemModel.fromRecord(record, pb))
-          .toList();
-    } catch (e) {
-      print('Error fetching menu: $e');
-      throw Exception('Failed to load menu: $e');
-    }
-  }
-
+  //
+  // *** HÀM getMenu() ĐÃ BỊ XÓA KHỎI ĐÂY (ĐÃ CHUYỂN QUA MenuService) ***
+  //
   // --- Chức Năng Tạo Hóa Đơn Mới ---
   Future<String> createOrderRecord(String tableId, double totalPrice) async {
     try {
@@ -171,6 +163,7 @@ class PocketBaseService {
             'description': '',
           });
 
+          // Vẫn cần `pb` instance để gọi `MenuItemModel.fromRecord`
           final deletedMenuItem = MenuItemModel.fromRecord(fakeRecord, pb);
 
           return OrderItemView(
@@ -263,9 +256,6 @@ class PocketBaseService {
           creatorRecord = creatorExpand.first;
         }
 
-        // Truyền record chính và các record đã expand
-        // LƯU Ý: Đảm bảo bạn đã định nghĩa OrderViewModel ở đâu đó
-        // (ví dụ: lib/models/order_view.dart)
         return OrderViewModel.fromRecord(record, tableRecord, creatorRecord);
       }).toList();
     } catch (e) {
@@ -275,60 +265,5 @@ class PocketBaseService {
   }
 } // End of PocketBaseService
 
-// *** MODEL VIEW CHO HÓA ĐƠN HOÀN THÀNH (Nên chuyển ra file riêng) ***
-// LƯU Ý: Lớp này nên được chuyển sang file riêng (ví dụ: lib/models/order_view.dart)
-class OrderViewModel {
-  final String id;
-  final String tableId;
-  final String tableName; // Tên bàn
-  final OrderStatus status;
-  final double totalPrice;
-  final String createdById;
-  final String createdByUsername; // Thêm tên người tạo hóa đơn
-  final DateTime created;
-  final DateTime updated;
-
-  OrderViewModel({
-    required this.id,
-    required this.tableId,
-    required this.tableName,
-    required this.status,
-    required this.totalPrice,
-    required this.createdById,
-    required this.createdByUsername, // Cập nhật Constructor
-    required this.created,
-    required this.updated,
-  });
-
-  factory OrderViewModel.fromRecord(
-    RecordModel record,
-    RecordModel? tableRecord,
-    RecordModel? creatorRecord, // Nhận thêm RecordModel của người tạo
-  ) {
-    // CẬP NHẬT: Thay thế 'username' bằng 'name' theo yêu cầu (Giả định trường 'name' có trong collection 'users')
-    // Nếu trường 'name' không tồn tại, nó sẽ là null.
-    final creatorName = creatorRecord?.getStringValue('name');
-
-    return OrderViewModel(
-      id: record.id,
-      tableId: record.getStringValue('table'),
-      tableName: tableRecord?.getStringValue('name') ?? 'N/A',
-      status: OrderStatus.fromString(record.getStringValue('status')),
-      totalPrice: record.getDoubleValue('total_price'),
-      createdById: record.getStringValue('created_by'),
-
-      // Lấy 'name' từ creatorRecord. Nếu null, rỗng, hoặc không có trường 'name', dùng email rồi mới ID (rút gọn)
-      createdByUsername: (creatorName?.isNotEmpty == true)
-          ? creatorName!
-          : (creatorRecord?.getStringValue('email') ?? // Fallback về email
-                'User ID: ${record.getStringValue('created_by').substring(0, 8)}...'), // Fallback cuối
-
-      created: DateTime.parse(
-        record.getStringValue('created'),
-      ).toLocal(), // Chuyển về giờ địa phương
-      updated: DateTime.parse(
-        record.getStringValue('updated'),
-      ).toLocal(), // Chuyển về giờ địa phương
-    );
-  }
-}
+// *** DEFINITION CỦA OrderViewModel ĐÃ BỊ XÓA KHỎI ĐÂY ***
+// (Nó đã được chuyển sang lib/models/order_view.dart)

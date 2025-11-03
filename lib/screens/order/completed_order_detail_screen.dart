@@ -5,7 +5,7 @@ import 'package:myshop/services/pocketbase_service.dart';
 import 'package:myshop/utils/currency_formatter.dart';
 import 'package:myshop/models/order_item_view.dart';
 // Import cho OrderViewModel
-import 'package:myshop/services/pocketbase_service.dart' show OrderViewModel;
+import 'package:myshop/models/order_view.dart';
 
 class CompletedOrderDetailScreen extends StatefulWidget {
   final OrderViewModel orderView;
@@ -64,10 +64,7 @@ class _CompletedOrderDetailScreenState
                 'HH:mm:ss - dd/MM/yyyy',
               ).format(widget.orderView.created),
             ),
-            _buildInfoRow(
-              'Người tạo:',
-              widget.orderView.createdByUsername ?? 'N/A',
-            ),
+            _buildInfoRow('Người tạo:', widget.orderView.createdByUsername),
             const SizedBox(height: 8),
             _buildInfoRow(
               'Tổng tiền:',

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart'; // Để định dạng giờ
 import 'package:myshop/services/pocketbase_service.dart'; // Import service và OrderViewModel
 import 'package:myshop/utils/currency_formatter.dart'; // Import định dạng tiền
 import 'package:myshop/screens/order/completed_order_detail_screen.dart'; // <-- IMPORT MỚI
+import 'package:myshop/models/order_view.dart'; // Import OrderViewModel
 
 class CompletedOrdersScreen extends StatefulWidget {
   const CompletedOrdersScreen({super.key});

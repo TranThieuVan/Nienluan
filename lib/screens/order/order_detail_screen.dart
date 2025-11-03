@@ -49,7 +49,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _menuFuture = pbService.getMenu();
+    _menuFuture = pbService.menuItems.getMenu();
     _searchController.addListener(_onSearchChanged);
 
     // --- BƯỚC 5: Nếu có hóa đơn cũ, tải giỏ hàng ---
