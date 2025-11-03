@@ -7,6 +7,7 @@ import 'package:myshop/models/order.dart';
 import 'package:myshop/models/order_item_view.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'notification_service.dart'; // <-- THÊM IMPORT MỚI
 // Import các service con
 import 'user_service.dart';
 import 'menu_service.dart'; // <-- IMPORT SERVICE MỚI
@@ -23,6 +24,7 @@ class PocketBaseService {
   // --- Các service con ---
   late final UserService users; // Service quản lý người dùng
   late final MenuService menuItems; // <-- THÊM SERVICE MỚI
+  late final NotificationService notifications; // <-- THÊM DÒNG NÀY
 
   PocketBaseService._internal()
     // Lấy URL từ .env, fallback về localhost
@@ -30,6 +32,7 @@ class PocketBaseService {
     // Khởi tạo service con, truyền instance `pb` hiện có
     users = UserService(pb);
     menuItems = MenuService(pb); // <-- KHỞI TẠO SERVICE MỚI
+    notifications = NotificationService(pb); // <-- KHỞI TẠO NÓ
   }
   // --- Hết phần Singleton ---
 
@@ -53,8 +56,27 @@ class PocketBaseService {
   // --- Chức Năng Quản Lý Bàn ---
   Future<List<TableModel>> getTables() async {
     try {
-      final records = await pb.collection('tables').getFullList(sort: 'name');
-      return records.map((record) => TableModel.fromRecord(record)).toList();
+      // 1. Lấy danh sách từ PocketBase
+      // (Không cần sort ở đây nữa, vì chúng ta sẽ sort bằng Dart)
+      final records = await pb.collection('tables').getFullList();
+
+      // 2. Chuyển đổi (map) thành List<TableModel>
+      final tables = records
+          .map((record) => TableModel.fromRecord(record))
+          .toList();
+
+      // 3. Sắp xếp (sort) lại danh sách bằng logic của Dart
+      tables.sort((a, b) {
+        // Lấy số từ tên của bàn a và b bằng hàm helper
+        final numA = _extractTableNumber(a.name);
+        final numB = _extractTableNumber(b.name);
+
+        // So sánh 2 số đó
+        return numA.compareTo(numB);
+      });
+
+      // 4. Trả về danh sách đã được sắp xếp
+      return tables;
     } catch (e) {
       print('Error fetching tables: $e');
       throw Exception('Failed to load tables: $e');
@@ -219,35 +241,97 @@ class PocketBaseService {
     }
   }
 
-  /// Lấy danh sách các hóa đơn đã hoàn thành ('paid') trong ngày hôm nay
-  /// Mở rộng (expand) thông tin bàn ('table') VÀ người tạo ('created_by')
-  Future<List<OrderViewModel>> getCompletedOrdersToday() async {
+  // [Bên trong lớp PocketBaseService]
+
+  /// (Hàm helper) Thoát các giá trị chuỗi để dùng trong filter
+  /// Nó thay thế dấu ' thành ''
+  String _escapeFilterValue(String value) {
+    return value.replaceAll("'", "''");
+  }
+
+  /// Lấy danh sách các hóa đơn đã hoàn thành ('paid')
+  /// có thể lọc theo ngày VÀ/HOẶC từ khóa tìm kiếm (ID)
+  Future<List<OrderViewModel>> getCompletedOrders({
+    DateTime? selectedDate,
+    String? searchTerm,
+  }) async {
     try {
       final now = DateTime.now();
-      // Chuyển về UTC để so sánh với thời gian lưu trong PocketBase
-      final startOfDay = DateFormat("yyyy-MM-dd 00:00:00").format(now.toUtc());
-      final endOfDay = DateFormat("yyyy-MM-dd 23:59:59").format(now.toUtc());
 
-      final filter =
-          'status = "paid" && created >= "$startOfDay" && created <= "$endOfDay"';
+      // --- PHẦN SỬA LỖI LỌC NGÀY ---
+      DateTime startDateTimeLocal;
+      DateTime endDateTimeLocal;
+
+      if (selectedDate != null) {
+        // Lọc theo 1 ngày: Lấy từ 00:00:00 đến 23:59:59 của ngày đó (giờ ĐỊA PHƯƠNG)
+        startDateTimeLocal = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+          0,
+          0,
+          0, // 00:00:00
+        );
+        endDateTimeLocal = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+          23,
+          59,
+          59, // 23:59:59
+        );
+      } else {
+        // Mặc định (30 ngày): Lấy từ 00:00:00 của 30 ngày trước
+        final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+        startDateTimeLocal = DateTime(
+          thirtyDaysAgo.year,
+          thirtyDaysAgo.month,
+          thirtyDaysAgo.day,
+          0,
+          0,
+          0,
+        );
+        // Đến 23:59:59 của ngày hôm nay
+        endDateTimeLocal = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      }
+
+      // Chuyển đổi sang chuỗi UTC mà PocketBase có thể hiểu
+      final startFilter = startDateTimeLocal.toUtc().toIso8601String();
+      final endFilter = endDateTimeLocal.toUtc().toIso8601String();
+      // --- KẾT THÚC PHẦN SỬA LỖI ---
+
+      // --- Xây dựng Filter động (BẰNG TAY) ---
+      List<String> filters = [
+        'status = "paid"',
+        // Dùng dấu nháy đơn ' và giá trị UTC đã chuẩn hóa
+        'created >= \'$startFilter\'',
+        'created <= \'$endFilter\'',
+      ];
+
+      // Thêm điều kiện tìm kiếm (nếu có)
+      if (searchTerm != null && searchTerm.isNotEmpty) {
+        final escapedTerm = _escapeFilterValue(searchTerm);
+        filters.add('id ~ \'$escapedTerm\'');
+      }
+
+      final filterString = filters.join(' && ');
+      // --- Kết thúc xây dựng Filter ---
 
       final records = await pb
           .collection('orders')
           .getFullList(
-            filter: filter,
+            filter: filterString, // Gửi chuỗi filter đã build
             sort: '-created',
-            expand: 'table,created_by', // Mở rộng cả 'table' và 'created_by'
+            expand: 'table,created_by',
           );
 
       return records.map((record) {
-        // 1. Lấy RecordModel của bàn
+        // ... (logic map của bạn giữ nguyên)
         RecordModel? tableRecord;
         final tableExpand = record.get<List<RecordModel>>('expand.table');
         if (tableExpand.isNotEmpty) {
           tableRecord = tableExpand.first;
         }
-
-        // 2. Lấy RecordModel của người tạo (collection 'users')
         RecordModel? creatorRecord;
         final creatorExpand = record.get<List<RecordModel>>(
           'expand.created_by',
@@ -255,7 +339,6 @@ class PocketBaseService {
         if (creatorExpand.isNotEmpty) {
           creatorRecord = creatorExpand.first;
         }
-
         return OrderViewModel.fromRecord(record, tableRecord, creatorRecord);
       }).toList();
     } catch (e) {
@@ -263,7 +346,15 @@ class PocketBaseService {
       throw Exception('Failed to load completed orders: $e');
     }
   }
-} // End of PocketBaseService
 
-// *** DEFINITION CỦA OrderViewModel ĐÃ BỊ XÓA KHỎI ĐÂY ***
-// (Nó đã được chuyển sang lib/models/order_view.dart)
+  int _extractTableNumber(String name) {
+    // Dùng RegExp để tìm tất cả các chữ số trong tên
+    final match = RegExp(r'\d+').firstMatch(name);
+    if (match != null) {
+      // Nếu tìm thấy số, chuyển nó thành int
+      return int.tryParse(match.group(0)!) ?? 0;
+    }
+    // Nếu không tìm thấy số (ví dụ: "Bàn VIP"), trả về 0 hoặc một số lớn
+    return 0;
+  }
+} // End of PocketBaseService

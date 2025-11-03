@@ -6,6 +6,7 @@ import 'package:myshop/screens/manager/employee_management_screen.dart';
 // --- BƯỚC 1: THÊM IMPORT CHO CÁC MÀN HÌNH THẬT ---
 import 'package:myshop/screens/manager/manage_menu.dart';
 import 'package:myshop/screens/manager/reports.dart'; // (Giả định bạn cũng có file này)
+import 'package:myshop/screens/manager/notification_management_screen.dart';
 
 // Lớp dữ liệu (Giữ nguyên)
 class _ManagerAction {
@@ -65,6 +66,13 @@ class ManagerHome extends StatelessWidget {
         icon: Icons.table_bar,
         color: Colors.blueGrey.shade600,
         screen: const Text("Tạm thời chưa có màn hình chi tiết"),
+      ),
+      // --- THÊM CARD MỚI NÀY ---
+      _ManagerAction(
+        title: "Thông báo",
+        icon: Icons.campaign,
+        color: Colors.purple.shade600,
+        screen: const NotificationManagementScreen(),
       ),
     ];
   }

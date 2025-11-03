@@ -35,6 +35,7 @@ class _CompletedOrderDetailScreenState
   }
 
   // Widget để hiển thị thông tin chung
+  // Widget để hiển thị thông tin chung
   Widget _buildOrderInfo(BuildContext context) {
     return Card(
       margin: const EdgeInsets.all(16.0),
@@ -44,12 +45,21 @@ class _CompletedOrderDetailScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // --- PHẦN ĐÃ SỬA ---
             Text(
-              'Hóa đơn ${widget.orderView.tableName} - ID: ${widget.orderView.id.substring(0, 8)}...',
+              'Hóa đơn ${widget.orderView.tableName}', // Chỉ hiển thị tên bàn
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
+            const SizedBox(height: 4), // Thêm khoảng cách nhỏ
+            Text(
+              'ID: ${widget.orderView.id}', // Hiển thị ID đầy đủ ở dòng riêng
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey.shade700, // Màu xám cho ID
+              ),
+            ),
+            // --- KẾT THÚC PHẦN SỬA ---
             const Divider(),
             _buildInfoRow(
               'Trạng thái:',

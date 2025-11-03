@@ -6,6 +6,7 @@ import 'package:myshop/services/pocketbase_service.dart';
 import 'package:myshop/utils/currency_formatter.dart';
 // *** BƯỚC 5: Import OrderDetailScreen ***
 import 'order_detail_screen.dart';
+import 'checkout_screen.dart';
 
 class ExistingOrderScreen extends StatefulWidget {
   final TableModel table;
@@ -91,39 +92,29 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
     }
   }
 
-  /// Logic cho nút "Thanh toán"
+  // [Trong file: lib/screens/order/existing_order_screen.dart]
+
+  /// Logic cho nút "Thanh toán" (Điều hướng đến màn hình full)
   void _onCheckout() async {
     if (_order == null) return;
 
-    final bool? didConfirm = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Xác nhận Thanh Toán'),
-          content: Text(
-            'Bạn có chắc muốn thanh toán hóa đơn cho ${widget.table.name}?\n\n'
-            'Tổng tiền: ${formatCurrency(_totalPrice)}',
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Hủy'),
-              onPressed: () {
-                Navigator.of(context).pop(false);
-              },
-            ),
-            TextButton(
-              child: const Text('XÁC NHẬN'),
-              onPressed: () {
-                Navigator.of(context).pop(true);
-              },
-            ),
-          ],
-        );
-      },
+    // 1. Điều hướng đến màn hình Hóa đơn & QR Code
+    final bool? didConfirmPayment = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => CheckoutScreen(
+          order: _order!,
+          items: _items,
+          totalPrice: _totalPrice,
+        ),
+      ),
     );
 
-    if (didConfirm != true) return;
+    // 2. Nếu người dùng bấm "Thoát" (trả về false hoặc null), không làm gì cả.
+    if (didConfirmPayment != true) return;
 
+    // 3. Nếu người dùng bấm "Xác nhận Đã Thanh toán" (trả về true):
+
+    // --- BẮT ĐẦU XỬ LÝ CHECKOUT ---
     setState(() {
       _isProcessingCheckout = true;
     });

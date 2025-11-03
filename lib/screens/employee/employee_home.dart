@@ -9,6 +9,7 @@ import 'package:myshop/screens/order/existing_order_screen.dart';
 import 'package:myshop/screens/order/completed_orders_screen.dart';
 // --- IMPORT WIDGET MỚI ĐƯỢC TẠO ---
 import 'package:myshop/widgets/table_grid_view.dart';
+import 'package:myshop/screens/employee/employee_profile_screen.dart'; // <-- THÊM IMPORT NÀY
 
 class EmployeeHome extends StatefulWidget {
   const EmployeeHome({super.key});
@@ -87,6 +88,17 @@ class _EmployeeHomeState extends State<EmployeeHome> {
         title: const Text("Quản lý Bàn"),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.account_circle, color: Colors.white, size: 30),
+          tooltip: 'Tài khoản',
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const EmployeeProfileScreen(),
+              ),
+            );
+          },
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.receipt_long, color: Colors.white),
