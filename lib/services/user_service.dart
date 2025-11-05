@@ -1,128 +1,210 @@
 import 'package:pocketbase/pocketbase.dart';
-import 'package:myshop/models/user.dart'; // Import User model (đã cập nhật)
-// Import PocketBaseService không cần thiết nếu chỉ dùng pb instance
-// import 'pocketbase_service.dart';
+// Import các model mới
+import 'package:myshop/models/staff_profile.dart';
+import 'package:myshop/models/staff_role.dart';
+// Import model 'User' cũ (chỉ dùng cho hàm login)
+import 'package:myshop/models/user.dart';
 
-/// Lớp Service chuyên xử lý các thao tác liên quan đến Collection 'users'
+/// Lớp Service này giờ đây quản lý "Hồ sơ Nhân viên" (staff_profiles)
+/// và các tài khoản "users" liên quan đến hồ sơ đó.
 class UserService {
   final PocketBase pb;
 
-  // Constructor nhận instance PocketBase
   UserService(this.pb);
 
-  // --- CÁC HÀM QUẢN LÝ USER ---
-
-  /// Lấy danh sách người dùng, có thể lọc theo điều kiện (ví dụ: role)
-  Future<List<User>> getUsers({String? filter}) async {
+  /// 1. LẤY (READ)
+  /// Lấy tất cả hồ sơ nhân viên (từ collection 'staff_profiles')
+  Future<List<StaffProfile>> getStaffProfiles() async {
     try {
       final records = await pb
-          .collection('users')
+          .collection('staff_profiles')
           .getFullList(
-            filter: filter,
-            sort: 'name', // Sắp xếp theo 'name'
+            sort: 'name',
+            // 'expand' để lấy thông tin 'email' từ bảng 'users'
+            expand: 'user_account',
           );
-      return records.map((record) => User.fromRecord(record)).toList();
+      return records.map((record) => StaffProfile.fromRecord(record)).toList();
     } catch (e) {
-      print('UserService - Error fetching users: $e');
-      throw Exception('Failed to load users: $e');
+      print('UserService - Error fetching staff profiles: $e');
+      throw Exception('Failed to load staff list: $e');
     }
   }
 
-  /// Thêm người dùng mới (ví dụ: nhân viên)
-  Future<void> addUser({
-    required String email,
-    required String password,
-    required UserRole role,
-    String? name,
+  /// 7. LẤY (READ) 1 HỒ SƠ
+  /// Lấy hồ sơ nhân viên (staff_profile) dựa trên ID tài khoản (user_id)
+  Future<StaffProfile> getStaffProfileForUser(String userId) async {
+    try {
+      final record = await pb
+          .collection('staff_profiles')
+          .getFirstListItem(
+            'user_account = \'$userId\'', // Tìm hồ sơ liên kết với user_id này
+            expand: 'user_account', // Vẫn expand để lấy email
+          );
+      return StaffProfile.fromRecord(record);
+    } catch (e) {
+      print('UserService - Error fetching single staff profile: $e');
+      throw Exception('Không tìm thấy hồ sơ nhân viên.');
+    }
+  }
+
+  /// 2. THÊM (CREATE)
+  /// Thêm một nhân viên mới (tạo hồ sơ và tài khoản nếu cần)
+  Future<void> addStaffProfile({
+    required String name,
+    required StaffRole role,
+    double salary = 0.0,
+    String? email, // Bắt buộc nếu role cần đăng nhập
+    String? password, // Bắt buộc nếu role cần đăng nhập
+  }) async {
+    String? newUserId; // Biến để lưu ID tài khoản 'users'
+
+    try {
+      // BƯỚC A: Nếu vai trò này (Manager/Employee) cần đăng nhập
+      if (role.needsLoginAccount) {
+        if (email == null || password == null) {
+          throw Exception('Email và Mật khẩu là bắt buộc cho vai trò này.');
+        }
+
+        // Tạo tài khoản trong 'users' trước
+        final userRecord = await pb
+            .collection('users')
+            .create(
+              body: {
+                'email': email,
+                'password': password,
+                'passwordConfirm': password,
+                'emailVisibility': true,
+                'name': name, // Dùng tên thật cho 'name' của user
+                'role': role.name, // 'manager' hoặc 'employee'
+              },
+            );
+        newUserId = userRecord.id; // Lưu lại ID
+      }
+
+      // BƯỚC B: Tạo hồ sơ trong 'staff_profiles'
+      final profileBody = <String, dynamic>{
+        'name': name,
+        'role': role.toJson(),
+        'salary': salary,
+        'status': 'active',
+      };
+
+      // Nếu đã tạo user, liên kết nó lại
+      if (newUserId != null) {
+        profileBody['user_account'] = newUserId;
+      }
+
+      await pb.collection('staff_profiles').create(body: profileBody);
+    } catch (e) {
+      // XỬ LÝ LỖI: Nếu đã lỡ tạo 'users' mà lỗi khi tạo 'profile',
+      // chúng ta phải XÓA cái 'users' vừa tạo đi (để tránh rác)
+      if (newUserId != null) {
+        try {
+          await pb.collection('users').delete(newUserId);
+        } catch (deleteError) {
+          print(
+            "CRITICAL ERROR: Failed to rollback user creation: $deleteError",
+          );
+        }
+      }
+
+      // Ném lỗi gốc
+      print('UserService - Error adding staff: $e');
+      if (e is ClientException && e.response.containsKey('data')) {
+        final errors = e.response['data'] as Map<String, dynamic>;
+        if (errors.containsKey('email')) {
+          throw Exception('Email đã tồn tại.');
+        }
+      }
+      throw Exception('Failed to add staff: $e');
+    }
+  }
+
+  /// 3. XÓA (DELETE)
+  /// Xóa hồ sơ nhân viên (và cả tài khoản 'users' liên quan)
+  Future<void> deleteStaffProfile(StaffProfile profile) async {
+    try {
+      // Xóa hồ sơ 'staff_profiles' trước
+      await pb.collection('staff_profiles').delete(profile.id);
+
+      // Nếu hồ sơ này có liên kết tài khoản 'users', xóa luôn tài khoản đó
+      if (profile.hasLoginAccount) {
+        await pb.collection('users').delete(profile.userId!);
+      }
+    } catch (e) {
+      print('UserService - Error deleting staff: $e');
+      throw Exception('Failed to delete staff: $e');
+    }
+  }
+
+  /// 4. SỬA (UPDATE)
+  /// Cập nhật thông tin cơ bản của nhân viên (tên, lương, vai trò)
+  /// (Việc đổi mật khẩu sẽ do chính nhân viên đó tự làm)
+  Future<void> updateStaffProfileInfo({
+    required String profileId,
+    required String name,
+    required StaffRole role,
+    required double salary,
+    required String status,
   }) async {
     try {
       final body = <String, dynamic>{
-        "email": email,
-        "emailVisibility": true,
-        "password": password,
-        "passwordConfirm": password,
-        "role": role.toJson(),
+        'name': name,
+        'role': role.toJson(),
+        'salary': salary,
+        'status': status,
       };
-      body['name'] = name ?? email.split('@').first;
-
-      await pb.collection('users').create(body: body);
+      await pb.collection('staff_profiles').update(profileId, body: body);
     } catch (e) {
-      print('UserService - Error adding user: $e');
-      if (e is ClientException && e.response.containsKey('data')) {
-        final errors = e.response['data'] as Map<String, dynamic>;
-        String errorMsg = 'Lỗi không xác định.';
-        if (errors.containsKey('email')) {
-          errorMsg = 'Email đã tồn tại.';
-        } else if (errors.containsKey('password')) {
-          errorMsg = 'Mật khẩu không hợp lệ (quá ngắn?).';
-        } else if (errors.containsKey('name')) {
-          errorMsg = 'Tên không hợp lệ.';
-        }
-        throw Exception(errorMsg);
-      }
-      throw Exception('Failed to add user: $e');
+      print('UserService - Error updating staff info: $e');
+      throw Exception('Failed to update staff info: $e');
     }
   }
 
-  /// Xóa người dùng theo ID
-  Future<void> deleteUser(String userId) async {
-    try {
-      await pb.collection('users').delete(userId);
-    } catch (e) {
-      print('UserService - Error deleting user: $e');
-      throw Exception('Failed to delete user: $e');
-    }
-  }
-
-  // --- HÀM CẬP NHẬT USER (TÊN VÀ MẬT KHẨU) ---
-  /// Cập nhật thông tin người dùng (Tên và Mật khẩu)
-  Future<void> updateUser({
+  /// 5. HÀM CŨ (Vẫn cần cho nhân viên tự đổi mật khẩu)
+  /// Cập nhật Mật khẩu cho tài khoản 'users' (dùng ở EditProfileScreen)
+  Future<void> updateUserPassword({
     required String userId,
-    String? newName, // Tên mới (optional)
-    String? oldPassword, // Mật khẩu cũ (bắt buộc nếu đổi mk)
-    String? newPassword, // Mật khẩu mới (optional)
-    String? newPasswordConfirm, // Xác nhận mk mới (optional)
+    required String oldPassword,
+    required String newPassword,
+    required String newPasswordConfirm,
   }) async {
     try {
-      // Dữ liệu chỉ chứa các trường cần cập nhật
-      final body = <String, dynamic>{};
-
-      // Thêm tên nếu có
-      if (newName != null) {
-        body['name'] = newName;
-      }
-
-      // Thêm mật khẩu nếu có (và hợp lệ)
-      if (newPassword != null && newPassword.isNotEmpty) {
-        if (oldPassword == null || oldPassword.isEmpty) {
-          throw Exception('Vui lòng nhập mật khẩu cũ để đổi mật khẩu.');
-        }
-        if (newPassword != newPasswordConfirm) {
-          throw Exception('Mật khẩu mới và xác nhận không khớp.');
-        }
-        // PocketBase yêu cầu cả 3 trường khi đổi mật khẩu
-        body['oldPassword'] = oldPassword;
-        body['password'] = newPassword;
-        body['passwordConfirm'] = newPasswordConfirm;
-      }
-
-      // Nếu không có gì để cập nhật, không cần gọi API
-      if (body.isEmpty) return;
-
-      // Gọi API cập nhật
+      final body = <String, dynamic>{
+        'oldPassword': oldPassword,
+        'password': newPassword,
+        'passwordConfirm': newPasswordConfirm,
+      };
       await pb.collection('users').update(userId, body: body);
     } catch (e) {
-      print('UserService - Error updating user: $e');
-      // Xử lý lỗi cụ thể từ PocketBase (ví dụ: sai mật khẩu cũ)
+      print('UserService - Error updating password: $e');
       if (e is ClientException && e.response.containsKey('data')) {
         final errors = e.response['data'] as Map<String, dynamic>;
         if (errors.containsKey('oldPassword')) {
           throw Exception('Mật khẩu cũ không chính xác.');
-        } else if (errors.containsKey('password')) {
-          throw Exception('Mật khẩu mới không hợp lệ (quá ngắn?).');
         }
       }
-      throw Exception('Failed to update user: $e');
+      throw Exception('Failed to update password: $e');
+    }
+  }
+
+  /// 6. HÀM CŨ (Vẫn cần cho nhân viên tự đổi tên)
+  /// Cập nhật Tên trong cả 'users' và 'staff_profiles'
+  Future<void> updateUserAndProfileName({
+    required String userId,
+    required String profileId,
+    required String newName,
+  }) async {
+    try {
+      // Cập nhật 'name' trong 'users' (để login/hiển thị)
+      await pb.collection('users').update(userId, body: {'name': newName});
+      // Cập nhật 'name' trong 'staff_profiles' (để quản lý)
+      await pb
+          .collection('staff_profiles')
+          .update(profileId, body: {'name': newName});
+    } catch (e) {
+      print('UserService - Error updating name: $e');
+      throw Exception('Failed to update name: $e');
     }
   }
 }

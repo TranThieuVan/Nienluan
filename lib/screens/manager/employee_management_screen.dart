@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-// Import service chính (chứa users service)
 import 'package:myshop/services/pocketbase_service.dart';
-import 'package:myshop/models/user.dart';
-// Import các widget con mới
+// Import models và widgets mới
+import 'package:myshop/models/staff_profile.dart';
+import 'package:myshop/models/staff_role.dart';
 import 'package:myshop/widgets/manager/employee_list_view.dart';
 import 'package:myshop/widgets/manager/add_employee_dialog.dart';
-// Import dialog sửa
 import 'package:myshop/widgets/manager/edit_employee_dialog.dart';
 
 class EmployeeManagementScreen extends StatefulWidget {
@@ -18,71 +17,78 @@ class EmployeeManagementScreen extends StatefulWidget {
 
 class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   final PocketBaseService pbService = PocketBaseService.instance;
-  late Future<List<User>> _employeesFuture;
+  late Future<List<StaffProfile>> _staffProfilesFuture; // <-- ĐÃ SỬA
 
   @override
   void initState() {
     super.initState();
-    _loadEmployees();
+    _loadStaffProfiles();
   }
 
-  Future<void> _loadEmployees() async {
+  Future<void> _loadStaffProfiles() async {
+    // <-- ĐÃ SỬA
     if (mounted) {
       setState(() {
-        _employeesFuture = pbService.users.getUsers(
-          filter: "role = 'employee'",
-        );
+        _staffProfilesFuture = pbService.users.getStaffProfiles(); // <-- ĐÃ SỬA
       });
     }
   }
 
-  // --- LOGIC XỬ LÝ ---
+  // Hàm hiển thị Snackbar
+  void _showSnackbar(String message, Color color) {
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
+    }
+  }
 
-  // Hiển thị dialog thêm nhân viên
+  // --- LOGIC XỬ LÝ MỚI ---
+
   void _showAddEmployeeDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return AddEmployeeDialog(onAdd: _handleAddEmployee);
+        return AddEmployeeDialog(onAdd: _handleAddStaffProfile); // <-- ĐÃ SỬA
       },
     );
   }
 
-  // Xử lý thêm nhân viên
-  Future<void> _handleAddEmployee({
-    required String email,
-    required String password,
-    required String confirmPassword,
-    String? name,
+  // Xử lý thêm hồ sơ
+  Future<void> _handleAddStaffProfile({
+    required String name,
+    required StaffRole role,
+    double salary = 0.0,
+    String? email,
+    String? password,
   }) async {
     try {
-      await pbService.users.addUser(
+      await pbService.users.addStaffProfile(
+        name: name,
+        role: role,
+        salary: salary,
         email: email,
         password: password,
-        role: UserRole.employee,
-        name: name,
       );
-      _showSnackbar(
-        'Thêm nhân viên ${name?.isNotEmpty == true ? name : email} thành công!',
-        Colors.green,
-      );
-      _loadEmployees();
+      _showSnackbar('Thêm nhân viên $name thành công!', Colors.green);
+      _loadStaffProfiles();
     } catch (e) {
       _showSnackbar('Lỗi thêm nhân viên: $e', Colors.red);
-      throw e;
+      throw e; // Ném lỗi để dialog biết
     }
   }
 
-  // Xử lý xóa nhân viên
-  Future<bool> _handleDeleteEmployee(User user) async {
+  // Xử lý xóa hồ sơ
+  Future<bool> _handleDeleteStaffProfile(StaffProfile profile) async {
+    // <-- ĐÃ SỬA
     final confirmed =
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Xác nhận Xóa'),
             content: Text(
-              'Bạn có chắc chắn muốn xóa nhân viên ${user.name.isNotEmpty ? user.name : user.email} không?',
+              'Bạn có chắc chắn muốn xóa ${profile.name} không? Thao tác này KHÔNG THỂ hoàn tác.',
             ),
             actions: [
               TextButton(
@@ -100,12 +106,12 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
 
     if (confirmed) {
       try {
-        await pbService.users.deleteUser(user.id);
+        await pbService.users.deleteStaffProfile(profile); // <-- ĐÃ SỬA
         _showSnackbar(
-          'Xóa nhân viên ${user.name.isNotEmpty ? user.name : user.email} thành công!',
+          'Xóa nhân viên ${profile.name} thành công!',
           Colors.green,
         );
-        _loadEmployees(); // Tải lại sau khi xóa thành công
+        _loadStaffProfiles();
         return true;
       } catch (e) {
         _showSnackbar('Lỗi xóa nhân viên: $e', Colors.red);
@@ -116,58 +122,51 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   }
 
   // Hiển thị Dialog Sửa
-  void _showEditEmployeeDialog(User user) {
+  void _showEditEmployeeDialog(StaffProfile profile) {
+    // <-- ĐÃ SỬA
     showDialog(
       context: context,
-      barrierDismissible: false, // Không đóng khi nhấn ra ngoài
+      barrierDismissible: false,
       builder: (context) {
-        // *** LỖI ĐÃ SỬA: Truyền một callback duy nhất ***
         return EditEmployeeDialog(
-          employee: user,
-          onUpdate: _handleUpdateEmployee, // Callback cập nhật tổng hợp
+          profile: profile, // <-- ĐÃ SỬA
+          onUpdate: _handleUpdateStaffProfile, // <-- ĐÃ SỬA
         );
       },
     );
   }
 
-  // --- HÀM XỬ LÝ CẬP NHẬT (GỘP LẠI) ---
-  // Nhận tất cả tham số từ Dialog EditEmployeeDialog
-  Future<void> _handleUpdateEmployee({
-    required String userId,
-    String? newName,
-    String? oldPassword,
-    String? newPassword,
-    String? confirmNewPassword, // Sửa tên tham số cho khớp
+  // Xử lý cập nhật hồ sơ
+  Future<void> _handleUpdateStaffProfile({
+    // <-- ĐÃ SỬA
+    required String profileId,
+    required String name,
+    required StaffRole role,
+    required double salary,
+    required String status,
   }) async {
     try {
-      // Gọi hàm updateUser duy nhất trong service
-      await pbService.users.updateUser(
-        userId: userId,
-        newName: newName,
-        oldPassword: oldPassword,
-        newPassword: newPassword,
-        newPasswordConfirm: confirmNewPassword,
+      //*** LƯU Ý QUAN TRỌNG:
+      // Code này chưa xử lý việc:
+      // 1. Chuyển từ 'Chef' (không login) -> 'Employee' (cần login)
+      // 2. Chuyển từ 'Employee' (có login) -> 'Chef' (không cần login)
+      // Đây là logic phức tạp, tạm thời chỉ cập nhật thông tin.
+
+      await pbService.users.updateStaffProfileInfo(
+        profileId: profileId,
+        name: name,
+        role: role,
+        salary: salary,
+        status: status,
       );
       _showSnackbar('Cập nhật thông tin thành công!', Colors.green);
-      _loadEmployees(); // Làm mới danh sách
+      _loadStaffProfiles(); // Làm mới danh sách
     } catch (e) {
       _showSnackbar('Lỗi cập nhật: $e', Colors.red);
-      throw e; // Ném lại lỗi để Dialog biết và không tự đóng
+      throw e; // Ném lại lỗi
     }
   }
 
-  // --- ĐÃ XÓA _handleUpdateName và _handleUpdatePassword ---
-
-  // Hàm hiển thị Snackbar
-  void _showSnackbar(String message, Color color) {
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
-    }
-  }
-
-  // --- GIAO DIỆN (BUILD) ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -178,26 +177,24 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadEmployees,
+            onPressed: _loadStaffProfiles, // <-- ĐÃ SỬA
             tooltip: 'Làm mới danh sách',
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _loadEmployees,
-        child: FutureBuilder<List<User>>(
-          future: _employeesFuture,
+        onRefresh: _loadStaffProfiles, // <-- ĐÃ SỬA
+        child: FutureBuilder<List<StaffProfile>>(
+          // <-- ĐÃ SỬA
+          future: _staffProfilesFuture, // <-- ĐÃ SỬA
           builder: (context, snapshot) {
-            // Xử lý Loading
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-
-            // Xử lý Lỗi
             if (snapshot.hasError) {
               return Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(20.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -209,13 +206,16 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                       const SizedBox(height: 10),
                       Text(
                         'Lỗi tải danh sách nhân viên: ${snapshot.error}',
-                        style: const TextStyle(color: Colors.red),
                         textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontSize: 16,
+                        ),
                       ),
                       const SizedBox(height: 20),
                       ElevatedButton(
-                        onPressed: _loadEmployees,
-                        child: const Text('Thử lại'),
+                        onPressed: _loadStaffProfiles,
+                        child: const Text('Thử tải lại'),
                       ),
                     ],
                   ),
@@ -223,18 +223,15 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
               );
             }
 
-            // Xử lý Thành công -> Gọi EmployeeListView
-            final employees = snapshot.data ?? [];
+            final profiles = snapshot.data ?? []; // <-- ĐÃ SỬA
             return EmployeeListView(
-              employees: employees,
-              onDeleteConfirmed: _handleDeleteEmployee,
-              // Gọi hàm hiển thị dialog sửa
-              onEdit: _showEditEmployeeDialog,
+              profiles: profiles, // <-- ĐÃ SỬA
+              onDeleteConfirmed: _handleDeleteStaffProfile, // <-- ĐÃ SỬA
+              onEdit: _showEditEmployeeDialog, // <-- ĐÃ SỬA
             );
           },
         ),
       ),
-      // Nút Thêm (FloatingActionButton)
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddEmployeeDialog,
         backgroundColor: Colors.indigo,

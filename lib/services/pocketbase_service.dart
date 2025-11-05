@@ -8,6 +8,7 @@ import 'package:myshop/models/order_item_view.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'notification_service.dart'; // <-- THÊM IMPORT MỚI
+import 'schedule_service.dart'; // <-- THÊM IMPORT MỚI
 // Import các service con
 import 'user_service.dart';
 import 'menu_service.dart'; // <-- IMPORT SERVICE MỚI
@@ -25,6 +26,7 @@ class PocketBaseService {
   late final UserService users; // Service quản lý người dùng
   late final MenuService menuItems; // <-- THÊM SERVICE MỚI
   late final NotificationService notifications; // <-- THÊM DÒNG NÀY
+  late final ScheduleService schedules; // <-- THÊM DÒNG NÀY
 
   PocketBaseService._internal()
     // Lấy URL từ .env, fallback về localhost
@@ -33,6 +35,7 @@ class PocketBaseService {
     users = UserService(pb);
     menuItems = MenuService(pb); // <-- KHỞI TẠO SERVICE MỚI
     notifications = NotificationService(pb); // <-- KHỞI TẠO NÓ
+    schedules = ScheduleService(pb); // <-- KHỞI TẠO NÓ
   }
   // --- Hết phần Singleton ---
 

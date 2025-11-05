@@ -1,28 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:myshop/models/user.dart';
-import 'employee_list_item.dart'; // Import item widget
+import 'package:myshop/models/staff_profile.dart';
+import 'employee_list_item.dart'; // Sửa tên file này nếu bạn đổi ở trên
 
 class EmployeeListView extends StatelessWidget {
-  final List<User> employees;
-  // Callback function để xác nhận xóa (truyền xuống item)
-  final Future<bool> Function(User) onDeleteConfirmed;
-  // Callback function khi nhấn vào item (truyền xuống item)
-  final void Function(User) onEdit; // Nhận User để biết sửa ai
+  final List<StaffProfile> profiles; // <-- ĐỔI TỪ User SANG StaffProfile
+  final Future<bool> Function(StaffProfile) onDeleteConfirmed;
+  final void Function(StaffProfile) onEdit;
 
   const EmployeeListView({
     super.key,
-    required this.employees,
+    required this.profiles,
     required this.onDeleteConfirmed,
     required this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (employees.isEmpty) {
-      // Stack + ListView để RefreshIndicator hoạt động khi rỗng
+    if (profiles.isEmpty) {
       return Stack(
         children: [
-          ListView(), // Cần ListView rỗng
+          ListView(),
           const Center(
             child: Text('Không có nhân viên nào. Hãy thêm người mới!'),
           ),
@@ -31,18 +28,17 @@ class EmployeeListView extends StatelessWidget {
     }
 
     return ListView.separated(
-      // Dùng separated để có đường kẻ
-      itemCount: employees.length,
+      itemCount: profiles.length,
       itemBuilder: (context, index) {
-        final employee = employees[index];
+        final profile = profiles[index];
         return EmployeeListItem(
-          employee: employee,
+          // Sửa tên Widget nếu bạn đổi file 1
+          profile: profile, // <-- Đã đổi
           onDeleteConfirmed: onDeleteConfirmed,
-          onTap: () => onEdit(employee), // Gọi callback sửa khi nhấn
+          onTap: () => onEdit(profile),
         );
       },
-      separatorBuilder: (context, index) =>
-          const Divider(height: 1), // Thêm đường kẻ
+      separatorBuilder: (context, index) => const Divider(height: 1),
     );
   }
 }

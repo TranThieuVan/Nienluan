@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:myshop/models/user.dart'; // Cần UserRole
+import 'package:flutter/services.dart';
+import 'package:myshop/models/staff_role.dart'; // <-- IMPORT MỚI
 
-// Định nghĩa kiểu callback function
-typedef AddEmployeeCallback =
+// Định nghĩa kiểu callback function mới
+typedef AddStaffProfileCallback =
     Future<void> Function({
-      required String email,
-      required String password,
-      required String confirmPassword,
-      String? name,
+      required String name,
+      required StaffRole role,
+      double salary,
+      String? email,
+      String? password,
     });
 
 class AddEmployeeDialog extends StatefulWidget {
-  final AddEmployeeCallback onAdd;
+  final AddStaffProfileCallback onAdd;
 
   const AddEmployeeDialog({super.key, required this.onAdd});
 
@@ -20,45 +22,51 @@ class AddEmployeeDialog extends StatefulWidget {
 }
 
 class _AddEmployeeDialogState extends State<AddEmployeeDialog> {
-  final _formKey = GlobalKey<FormState>(); // Key để validate form
+  final _formKey = GlobalKey<FormState>();
+  final nameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-  final confirmPasswordController = TextEditingController();
-  final nameController = TextEditingController();
-  bool _isLoading = false; // Trạng thái loading khi nhấn nút Thêm
+  final salaryController = TextEditingController(text: '0');
+
+  StaffRole _selectedRole = StaffRole.employee; // Giá trị mặc định
+  bool _isLoading = false;
 
   @override
   void dispose() {
+    nameController.dispose();
     emailController.dispose();
     passwordController.dispose();
-    confirmPasswordController.dispose();
-    nameController.dispose();
+    salaryController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    // Validate form trước khi submit
     if (_formKey.currentState?.validate() ?? false) {
       setState(() {
         _isLoading = true;
       });
       try {
-        // Gọi callback truyền về màn hình chính
         await widget.onAdd(
-          email: emailController.text,
-          password: passwordController.text,
-          confirmPassword: confirmPasswordController.text,
-          name: nameController.text.isNotEmpty ? nameController.text : null,
+          name: nameController.text,
+          role: _selectedRole,
+          salary: double.tryParse(salaryController.text) ?? 0.0,
+          email: _selectedRole.needsLoginAccount ? emailController.text : null,
+          password: _selectedRole.needsLoginAccount
+              ? passwordController.text
+              : null,
         );
-        // Nếu không có lỗi, tự động đóng dialog
         if (mounted) Navigator.of(context).pop();
       } catch (e) {
-        // Lỗi sẽ được xử lý và hiển thị Snackbar ở màn hình chính
-        // Ở đây chỉ cần tắt loading
-        if (mounted)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+          );
+        }
+        if (mounted) {
           setState(() {
             _isLoading = false;
           });
+        }
       }
     }
   }
@@ -69,73 +77,88 @@ class _AddEmployeeDialogState extends State<AddEmployeeDialog> {
       title: const Text('Thêm Nhân viên Mới'),
       content: SingleChildScrollView(
         child: Form(
-          // Bọc trong Form để validate
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
-                // Dùng TextFormField để validate
-                controller: emailController,
-                decoration: const InputDecoration(labelText: 'Email*'),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value == null || value.isEmpty || !value.contains('@')) {
-                    return 'Vui lòng nhập email hợp lệ';
-                  }
-                  return null;
-                },
-              ),
-              TextFormField(
                 controller: nameController,
-                decoration: const InputDecoration(labelText: 'Tên đầy đủ'),
-                validator: (value) {
-                  // Ví dụ: Tên không quá 50 ký tự
-                  if (value != null && value.length > 50) {
-                    return 'Tên không được quá 50 ký tự';
+                decoration: const InputDecoration(labelText: 'Tên đầy đủ*'),
+                validator: (value) => (value == null || value.isEmpty)
+                    ? 'Tên không được để trống'
+                    : null,
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<StaffRole>(
+                value: _selectedRole,
+                decoration: const InputDecoration(labelText: 'Vai trò*'),
+                items: StaffRole.values.map((role) {
+                  return DropdownMenuItem(
+                    value: role,
+                    child: Text(role.display),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedRole = value;
+                    });
                   }
-                  return null;
                 },
               ),
+              const SizedBox(height: 10),
               TextFormField(
-                controller: passwordController,
-                decoration: const InputDecoration(labelText: 'Mật khẩu*'),
-                obscureText: true,
-                validator: (value) {
-                  if (value == null || value.isEmpty || value.length < 8) {
-                    return 'Mật khẩu phải có ít nhất 8 ký tự';
-                  }
-                  return null;
-                },
+                controller: salaryController,
+                decoration: const InputDecoration(labelText: 'Lương (VND)'),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
-              TextFormField(
-                controller: confirmPasswordController,
-                decoration: const InputDecoration(
-                  labelText: 'Xác nhận Mật khẩu*',
+
+              // --- Hiển thị có điều kiện ---
+              if (_selectedRole.needsLoginAccount)
+                Column(
+                  children: [
+                    const Divider(height: 20),
+                    Text(
+                      'Tài khoản đăng nhập (Bắt buộc cho ${(_selectedRole).display})',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    TextFormField(
+                      controller: emailController,
+                      decoration: const InputDecoration(labelText: 'Email*'),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        if (_selectedRole.needsLoginAccount &&
+                            (value == null || !value.contains('@'))) {
+                          return 'Vui lòng nhập email hợp lệ';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: passwordController,
+                      decoration: const InputDecoration(labelText: 'Mật khẩu*'),
+                      obscureText: true,
+                      validator: (value) {
+                        if (_selectedRole.needsLoginAccount &&
+                            (value == null || value.length < 8)) {
+                          return 'Mật khẩu phải có ít nhất 8 ký tự';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
                 ),
-                obscureText: true,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Vui lòng xác nhận mật khẩu';
-                  }
-                  if (value != passwordController.text) {
-                    return 'Mật khẩu xác nhận không khớp';
-                  }
-                  return null;
-                },
-              ),
             ],
           ),
         ),
       ),
       actions: [
         TextButton(
-          // Vô hiệu hóa nút Hủy khi đang loading
           onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
           child: const Text('Hủy'),
         ),
         ElevatedButton(
-          // Hiển thị loading hoặc nút Thêm
           onPressed: _isLoading ? null : _submit,
           child: _isLoading
               ? const SizedBox(

@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:myshop/models/user.dart';
+import 'package:myshop/models/staff_profile.dart'; // <-- IMPORT MỚI
 import 'package:myshop/services/pocketbase_service.dart';
-// (Giả sử bạn sẽ tạo file này ở bước sau, tương tự như EditEmployeeDialog)
 import 'package:myshop/screens/employee/edit_profile_screen.dart';
-// (các import khác)
-import 'package:myshop/screens/employee/notification_screen.dart'; // <-- THÊM IMPORT NÀY
+import 'package:myshop/screens/employee/notification_screen.dart';
 
 class EmployeeProfileScreen extends StatefulWidget {
   const EmployeeProfileScreen({super.key});
@@ -15,22 +13,39 @@ class EmployeeProfileScreen extends StatefulWidget {
 
 class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
   final pbService = PocketBaseService.instance;
-  User? currentUser;
+  StaffProfile? currentProfile; // <-- ĐỔI TỪ User SANG StaffProfile
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    // Tải thông tin user đang đăng nhập
-    _loadCurrentUser();
+    _loadCurrentProfile();
   }
 
-  void _loadCurrentUser() {
-    // Lấy record của user đã đăng nhập từ service
-    final record = pbService.pb.authStore.record;
-    if (record != null) {
-      setState(() {
-        currentUser = User.fromRecord(record);
-      });
+  Future<void> _loadCurrentProfile() async {
+    setState(() {
+      _error = null;
+      currentProfile = null;
+    });
+    try {
+      // Lấy ID của user đang đăng nhập
+      final userId = pbService.pb.authStore.record?.id;
+      if (userId == null) {
+        throw Exception("Không tìm thấy ID người dùng đã đăng nhập.");
+      }
+      // Gọi service mới để lấy hồ sơ (profile)
+      final profile = await pbService.users.getStaffProfileForUser(userId);
+      if (mounted) {
+        setState(() {
+          currentProfile = profile;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
     }
   }
 
@@ -41,20 +56,18 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
 
   // Hàm điều hướng đến màn hình chỉnh sửa
   void _navigateToEditProfile() {
-    if (currentUser == null) return;
+    if (currentProfile == null) return;
 
-    // --- ĐÃ SỬA ---
     Navigator.of(context)
         .push<bool>(
-          // Nhận kết quả boolean
           MaterialPageRoute(
-            builder: (context) => EditProfileScreen(employee: currentUser!),
+            // Truyền StaffProfile
+            builder: (context) => EditProfileScreen(profile: currentProfile!),
           ),
         )
         .then((didUpdate) {
-          // Nếu màn hình Edit trả về 'true' (tức là đã cập nhật)
           if (didUpdate == true) {
-            _loadCurrentUser(); // Tải lại thông tin để cập nhật tên
+            _loadCurrentProfile(); // Tải lại thông tin
           }
         });
   }
@@ -67,75 +80,82 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
       ),
-      body: currentUser == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              children: [
-                // --- PHẦN HEADER THÔNG TIN ---
-                UserAccountsDrawerHeader(
-                  accountName: Text(
-                    currentUser!.name.isNotEmpty
-                        ? currentUser!.name
-                        : 'Chưa cập nhật tên',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  accountEmail: Text(currentUser!.email),
-                  currentAccountPicture: CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: Text(
-                      (currentUser!.name.isNotEmpty
-                              ? currentUser!.name[0]
-                              : currentUser!.email[0])
-                          .toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 40.0,
-                        color: Theme.of(context).primaryColor,
-                      ),
-                    ),
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).primaryColor,
-                  ),
-                ),
-
-                // --- PHẦN CHỨC NĂNG ---
-                ListTile(
-                  leading: const Icon(Icons.edit_note),
-                  title: const Text('Chỉnh sửa thông tin'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _navigateToEditProfile,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.calendar_month),
-                  title: const Text('Xem lịch làm việc'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    _navigateTo(
-                      const _PlaceholderScreen(title: 'Lịch làm việc'),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.notifications),
-                  title: const Text('Thông báo'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    // Bỏ placeholder và gọi màn hình thật
-                    _navigateTo(
-                      const NotificationScreen(), // <-- ĐÃ SỬA
-                    );
-                  },
-                ),
-              ],
-            ),
+      body: _buildBody(), // Tách body ra
     );
   }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(child: Text('Lỗi: $_error'));
+    }
+
+    if (currentProfile == null) {
+      // Trường hợp này không nên xảy ra nếu không lỗi
+      return const Center(child: Text('Không tải được hồ sơ.'));
+    }
+
+    // Hiển thị khi đã có profile
+    return ListView(
+      children: [
+        UserAccountsDrawerHeader(
+          accountName: Text(
+            currentProfile!.name.isNotEmpty
+                ? currentProfile!.name
+                : 'Chưa cập nhật tên',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          accountEmail: Text(currentProfile!.email),
+          currentAccountPicture: CircleAvatar(
+            backgroundColor: Colors.white,
+            child: Text(
+              (currentProfile!.name.isNotEmpty
+                      ? currentProfile!.name[0]
+                      : currentProfile!.email[0])
+                  .toUpperCase(),
+              style: TextStyle(
+                fontSize: 40.0,
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+          ),
+          decoration: BoxDecoration(color: Theme.of(context).primaryColor),
+        ),
+
+        // --- PHẦN CHỨC NĂNG ---
+        ListTile(
+          leading: const Icon(Icons.edit_note),
+          title: const Text('Chỉnh sửa thông tin'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _navigateToEditProfile,
+        ),
+        ListTile(
+          leading: const Icon(Icons.calendar_month),
+          title: const Text('Xem lịch làm việc'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            _navigateTo(const _PlaceholderScreen(title: 'Lịch làm việc'));
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.notifications),
+          title: const Text('Thông báo'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            _navigateTo(const NotificationScreen());
+          },
+        ),
+      ],
+    );
+  }
+
+  bool get _isLoading => currentProfile == null && _error == null;
 }
 
-// Lớp màn hình tạm thời
+// (Class _PlaceholderScreen giữ nguyên)
 class _PlaceholderScreen extends StatelessWidget {
   final String title;
   const _PlaceholderScreen({required this.title});

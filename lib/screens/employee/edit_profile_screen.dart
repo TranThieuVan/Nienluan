@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:myshop/models/user.dart';
+import 'package:myshop/models/staff_profile.dart'; // <-- IMPORT MỚI
 import 'package:myshop/services/pocketbase_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  final User employee; // Nhận thông tin nhân viên hiện tại
+  final StaffProfile profile; // <-- Đổi thành StaffProfile
 
-  const EditProfileScreen({super.key, required this.employee});
+  const EditProfileScreen({super.key, required this.profile});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -30,7 +30,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    nameController = TextEditingController(text: widget.employee.name);
+    nameController = TextEditingController(text: widget.profile.name);
   }
 
   @override
@@ -42,7 +42,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  // Hàm hiển thị lỗi (helper)
   void _showErrorSnackbar(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -54,9 +53,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   // Xử lý Submit
   Future<void> _submit() async {
     if (_formKey.currentState?.validate() ?? false) {
+      setState(() {
+        _isLoading = true;
+      });
+
       // Lấy giá trị
       final String? newName =
-          (nameController.text != widget.employee.name &&
+          (nameController.text != widget.profile.name &&
               nameController.text.isNotEmpty)
           ? nameController.text
           : null;
@@ -71,24 +74,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ? confirmNewPasswordController.text
           : null;
 
-      // Kiểm tra logic mật khẩu (nếu người dùng cố gắng đổi)
+      // --- Kiểm tra logic mật khẩu ---
       if (newPassword != null || confirmNewPassword != null) {
         if (oldPassword == null) {
           _showErrorSnackbar(
             'Vui lòng nhập mật khẩu cũ của bạn để đổi mật khẩu.',
           );
+          setState(() {
+            _isLoading = false;
+          });
           return;
         }
         if (newPassword == null || newPassword.length < 8) {
           _showErrorSnackbar('Mật khẩu mới phải có ít nhất 8 ký tự.');
+          setState(() {
+            _isLoading = false;
+          });
           return;
         }
         if (newPassword != confirmNewPassword) {
           _showErrorSnackbar('Mật khẩu mới và xác nhận không khớp.');
+          setState(() {
+            _isLoading = false;
+          });
           return;
         }
       } else if (oldPassword != null) {
         _showErrorSnackbar('Vui lòng nhập Mật khẩu mới và Xác nhận.');
+        setState(() {
+          _isLoading = false;
+        });
         return;
       }
 
@@ -98,24 +113,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             content: Text('Không có thay đổi nào được thực hiện.'),
           ),
         );
-        Navigator.of(context).pop(); // Thoát về
+        Navigator.of(context).pop();
         return;
       }
 
-      // Bắt đầu loading
-      setState(() {
-        _isLoading = true;
-      });
-
+      // --- Bắt đầu gọi Service ---
       try {
-        // Gọi hàm updateUser (giống hệt bên quản lý)
-        await pbService.users.updateUser(
-          userId: widget.employee.id, // ID của chính nhân viên này
-          newName: newName,
-          oldPassword: oldPassword,
-          newPassword: newPassword,
-          newPasswordConfirm: confirmNewPassword,
-        );
+        // Tách logic: Cập nhật Tên
+        if (newName != null) {
+          await pbService.users.updateUserAndProfileName(
+            userId: widget.profile.userId!,
+            profileId: widget.profile.id,
+            newName: newName,
+          );
+        }
+
+        // Cập nhật Mật khẩu
+        if (newPassword != null) {
+          await pbService.users.updateUserPassword(
+            userId: widget.profile.userId!,
+            oldPassword: oldPassword!,
+            newPassword: newPassword,
+            newPasswordConfirm: confirmNewPassword!,
+          );
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -162,7 +183,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // --- Phần Thông tin Cơ bản ---
                     Text(
                       'Email (Không thể đổi):',
                       style: Theme.of(
@@ -170,7 +190,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                     ),
                     SelectableText(
-                      widget.employee.email,
+                      widget.profile.email, // Lấy email từ profile
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 16),
@@ -191,7 +211,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
                     const Divider(height: 30, thickness: 1.5),
 
-                    // --- Phần Đổi Mật khẩu ---
                     Text(
                       'Đổi Mật khẩu:',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -206,7 +225,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                     const SizedBox(height: 15),
 
-                    // Mật khẩu Cũ
+                    // (Các TextFormField Mật khẩu giữ nguyên)
                     TextFormField(
                       controller: oldPasswordController,
                       decoration: InputDecoration(
@@ -234,8 +253,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       },
                     ),
                     const SizedBox(height: 10),
-
-                    // Mật khẩu Mới
                     TextFormField(
                       controller: newPasswordController,
                       decoration: InputDecoration(
@@ -264,8 +281,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       },
                     ),
                     const SizedBox(height: 10),
-
-                    // Xác nhận Mật khẩu Mới
                     TextFormField(
                       controller: confirmNewPasswordController,
                       decoration: InputDecoration(

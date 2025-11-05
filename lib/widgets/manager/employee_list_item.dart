@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:myshop/models/user.dart';
+import 'package:myshop/models/staff_profile.dart'; // <-- IMPORT MỚI
 
 class EmployeeListItem extends StatelessWidget {
-  final User employee;
-  // Callback function để xác nhận xóa
-  final Future<bool> Function(User) onDeleteConfirmed;
-  // Callback function khi nhấn vào item (để sửa)
+  final StaffProfile profile; // <-- ĐỔI TỪ User SANG StaffProfile
+  final Future<bool> Function(StaffProfile) onDeleteConfirmed;
   final VoidCallback onTap;
 
   const EmployeeListItem({
     super.key,
-    required this.employee,
+    required this.profile, // <-- ĐÃ ĐỔI TÊN
     required this.onDeleteConfirmed,
     required this.onTap,
   });
@@ -18,7 +16,7 @@ class EmployeeListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dismissible(
-      key: ValueKey(employee.id),
+      key: ValueKey(profile.id),
       direction: DismissDirection.endToStart,
       background: Container(
         color: Colors.red.shade700,
@@ -26,33 +24,25 @@ class EmployeeListItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20.0),
         child: const Icon(Icons.delete_sweep, color: Colors.white),
       ),
-      // Gọi callback xác nhận xóa
-      confirmDismiss: (direction) => onDeleteConfirmed(employee),
+      confirmDismiss: (direction) => onDeleteConfirmed(profile),
       child: ListTile(
         leading: CircleAvatar(
-          // Dùng CircleAvatar
           backgroundColor: Colors.indigo.shade100,
           child: Text(
-            // Lấy chữ cái đầu tiên của tên hoặc email
-            (employee.name.isNotEmpty ? employee.name[0] : employee.email[0])
-                .toUpperCase(),
+            (profile.name.isNotEmpty ? profile.name[0] : '?').toUpperCase(),
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.indigo.shade700,
             ),
           ),
         ),
-        // Ưu tiên hiển thị tên đầy đủ, fallback về email
         title: Text(
-          employee.name.isNotEmpty ? employee.name : employee.email,
+          profile.name,
           style: const TextStyle(fontWeight: FontWeight.w500),
         ),
-        subtitle: Text('Email: ${employee.email}'), // Chỉ hiển thị email
-        trailing: Icon(
-          Icons.edit_note,
-          color: Colors.grey.shade600,
-        ), // Icon sửa
-        onTap: onTap, // Gọi callback khi nhấn (để mở dialog sửa)
+        subtitle: Text('${profile.role.display} - ${profile.email}'),
+        trailing: Icon(Icons.edit_note, color: Colors.grey.shade600),
+        onTap: onTap,
       ),
     );
   }
