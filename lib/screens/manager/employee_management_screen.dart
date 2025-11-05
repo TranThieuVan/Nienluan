@@ -55,17 +55,13 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     );
   }
 
-  // Xử lý thêm hồ sơ
+  // Xử lý thêm hồ sơ (Đã đơn giản hóa)
   Future<void> _handleAddStaffProfile({
     required String name,
     required StaffRole role,
     double salary = 0.0,
     String? email,
     String? password,
-    // Thêm các tham số mới
-    required String workType,
-    required List<String> defaultDays,
-    required List<String> defaultShifts,
   }) async {
     try {
       await pbService.users.addStaffProfile(
@@ -74,10 +70,6 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         salary: salary,
         email: email,
         password: password,
-        // Truyền dữ liệu lịch
-        workType: workType,
-        defaultDays: defaultDays,
-        defaultShifts: defaultShifts,
       );
       _showSnackbar('Thêm nhân viên $name thành công!', Colors.green);
       _loadStaffProfiles();
@@ -138,36 +130,35 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       builder: (context) {
         return EditEmployeeDialog(
           profile: profile, // <-- ĐÃ SỬA
-          onUpdate: _handleUpdateStaffProfile, // <-- ĐÃ SỬA
+          onUpdate: _handleUpdateStaffDetails, // <-- ĐÃ SỬA
         );
       },
     );
   }
 
-  // Xử lý cập nhật hồ sơ
-  Future<void> _handleUpdateStaffProfile({
+  // Xử lý cập nhật hồ sơ (ĐÃ NÂNG CẤP)
+  Future<void> _handleUpdateStaffDetails({
     required String profileId,
     required String name,
     required StaffRole role,
     required double salary,
     required String status,
     // Thêm các tham số mới
-    required String workType,
-    required List<String> defaultDays,
-    required List<String> defaultShifts,
+    String? userId,
+    String? newEmail,
+    String? newPassword,
   }) async {
     try {
-      // (Bỏ qua logic chuyển đổi vai trò phức tạp)
-      await pbService.users.updateStaffProfileInfo(
+      await pbService.users.updateStaffDetails(
         profileId: profileId,
         name: name,
         role: role,
         salary: salary,
         status: status,
-        // Truyền dữ liệu lịch
-        workType: workType,
-        defaultDays: defaultDays,
-        defaultShifts: defaultShifts,
+        // Gửi dữ liệu tài khoản
+        userId: userId,
+        newEmail: newEmail,
+        newPassword: newPassword,
       );
       _showSnackbar('Cập nhật thông tin thành công!', Colors.green);
       _loadStaffProfiles(); // Làm mới danh sách

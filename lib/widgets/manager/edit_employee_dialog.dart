@@ -2,25 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:myshop/models/staff_profile.dart';
 import 'package:myshop/models/staff_role.dart';
-import 'package:multi_select_flutter/multi_select_flutter.dart'; // <-- Package mới
 
-// Callback mới (cần thêm các trường lịch)
-typedef UpdateStaffProfileCallback =
+// Callback mới (thêm email/password)
+typedef UpdateStaffDetailsCallback =
     Future<void> Function({
       required String profileId,
       required String name,
       required StaffRole role,
       required double salary,
       required String status,
-      // Thêm các trường lịch
-      required String workType,
-      required List<String> defaultDays,
-      required List<String> defaultShifts,
+      // Thêm thông tin tài khoản (nếu có)
+      String? userId,
+      String? newEmail,
+      String? newPassword,
     });
 
 class EditEmployeeDialog extends StatefulWidget {
   final StaffProfile profile;
-  final UpdateStaffProfileCallback onUpdate;
+  final UpdateStaffDetailsCallback onUpdate;
 
   const EditEmployeeDialog({
     super.key,
@@ -34,23 +33,19 @@ class EditEmployeeDialog extends StatefulWidget {
 
 class _EditEmployeeDialogState extends State<EditEmployeeDialog> {
   final _formKey = GlobalKey<FormState>();
+  // Controllers cho Profile
   late TextEditingController nameController;
   late TextEditingController salaryController;
   late StaffRole _selectedRole;
   late String _selectedStatus;
+
+  // Controllers cho Account (nếu có)
+  late TextEditingController emailController;
+  final passwordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
+
   bool _isLoading = false;
-
-  // --- THÊM STATE CHO LỊCH ---
-  late String _selectedWorkType;
-  List<String> _selectedDays = [];
-  List<String> _selectedShifts = [];
-
-  // Danh sách tùy chọn
   final List<String> _statusOptions = ['active', 'resigned', 'on_leave'];
-  final List<String> _workTypeOptions = ['full_time', 'part_time', 'casual'];
-  final List<String> _dayOptions = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-  final List<String> _shiftOptions = ['Ca sáng', 'Ca chiều', 'Ca tối'];
-  // --- KẾT THÚC THÊM ---
 
   @override
   void initState() {
@@ -62,24 +57,20 @@ class _EditEmployeeDialogState extends State<EditEmployeeDialog> {
     _selectedRole = widget.profile.role;
     _selectedStatus = widget.profile.status;
 
-    // --- KHỞI TẠO GIÁ TRỊ LỊCH ---
-    _selectedWorkType = widget.profile.workType;
-    _selectedDays = List<String>.from(widget.profile.defaultDays);
-    _selectedShifts = List<String>.from(widget.profile.defaultShifts);
+    emailController = TextEditingController(text: widget.profile.email);
 
     if (!_statusOptions.contains(_selectedStatus)) {
       _selectedStatus = 'active';
     }
-    if (!_workTypeOptions.contains(_selectedWorkType)) {
-      _selectedWorkType = 'part_time';
-    }
-    // --- KẾT THÚC KHỞI TẠO ---
   }
 
   @override
   void dispose() {
     nameController.dispose();
     salaryController.dispose();
+    emailController.dispose();
+    passwordController.dispose();
+    confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -88,17 +79,29 @@ class _EditEmployeeDialogState extends State<EditEmployeeDialog> {
       setState(() {
         _isLoading = true;
       });
+
+      String? newEmail;
+      if (widget.profile.hasLoginAccount &&
+          emailController.text != widget.profile.email) {
+        newEmail = emailController.text;
+      }
+
+      String? newPassword;
+      if (widget.profile.hasLoginAccount &&
+          passwordController.text.isNotEmpty) {
+        newPassword = passwordController.text;
+      }
+
       try {
         await widget.onUpdate(
           profileId: widget.profile.id,
           name: nameController.text,
-          role: _selectedRole,
+          role: _selectedRole, // Không cho đổi nữa
           salary: double.tryParse(salaryController.text) ?? 0.0,
           status: _selectedStatus,
-          // --- GỬI DỮ LIỆU LỊCH ---
-          workType: _selectedWorkType,
-          defaultDays: _selectedDays,
-          defaultShifts: _selectedShifts,
+          userId: widget.profile.userId,
+          newEmail: newEmail,
+          newPassword: newPassword,
         );
         if (mounted) Navigator.of(context).pop();
       } catch (e) {
@@ -107,6 +110,7 @@ class _EditEmployeeDialogState extends State<EditEmployeeDialog> {
             SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
           );
         }
+      } finally {
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -131,6 +135,11 @@ class _EditEmployeeDialogState extends State<EditEmployeeDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                'Thông tin cơ bản',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 10),
               TextFormField(
                 controller: nameController,
                 decoration: const InputDecoration(labelText: 'Tên đầy đủ*'),
@@ -139,23 +148,18 @@ class _EditEmployeeDialogState extends State<EditEmployeeDialog> {
                     : null,
               ),
               const SizedBox(height: 10),
-              DropdownButtonFormField<StaffRole>(
-                value: _selectedRole,
-                decoration: const InputDecoration(labelText: 'Vai trò*'),
-                items: StaffRole.values.map((role) {
-                  return DropdownMenuItem(
-                    value: role,
-                    child: Text(role.display),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  if (value != null)
-                    setState(() {
-                      _selectedRole = value;
-                    });
-                },
+
+              // Vai trò (chỉ đọc)
+              TextFormField(
+                readOnly: true,
+                initialValue: _selectedRole.display,
+                decoration: const InputDecoration(
+                  labelText: 'Vai trò',
+                  suffixIcon: Icon(Icons.lock, size: 18),
+                ),
               ),
               const SizedBox(height: 10),
+
               TextFormField(
                 controller: salaryController,
                 decoration: const InputDecoration(labelText: 'Lương (VND)'),
@@ -166,110 +170,80 @@ class _EditEmployeeDialogState extends State<EditEmployeeDialog> {
               DropdownButtonFormField<String>(
                 value: _selectedStatus,
                 decoration: const InputDecoration(labelText: 'Trạng thái*'),
-                items: _statusOptions.map((status) {
-                  return DropdownMenuItem(value: status, child: Text(status));
-                }).toList(),
+                items: _statusOptions
+                    .map(
+                      (status) =>
+                          DropdownMenuItem(value: status, child: Text(status)),
+                    )
+                    .toList(),
                 onChanged: (value) {
-                  if (value != null)
+                  if (value != null) {
                     setState(() {
                       _selectedStatus = value;
                     });
+                  }
                 },
               ),
 
+              // --- Thông tin Tài khoản ---
               if (widget.profile.hasLoginAccount)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10.0),
-                  child: SelectableText(
-                    'Email đăng nhập: ${widget.profile.email}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Divider(height: 24),
+                    Text(
+                      'Thông tin tài khoản (Đăng nhập)',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: emailController,
+                      decoration: const InputDecoration(labelText: 'Email*'),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) =>
+                          (value == null || !value.contains('@'))
+                          ? 'Email không hợp lệ'
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Đặt lại mật khẩu (để trống nếu không đổi)',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    TextFormField(
+                      controller: passwordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Mật khẩu mới',
+                      ),
+                      obscureText: true,
+                      validator: (value) {
+                        if (value != null &&
+                            value.isNotEmpty &&
+                            value.length < 8) {
+                          return 'Mật khẩu mới phải ít nhất 8 ký tự';
+                        }
+                        if (value != confirmPasswordController.text) {
+                          return 'Mật khẩu xác nhận không khớp';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: confirmPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Xác nhận mật khẩu mới',
+                      ),
+                      obscureText: true,
+                      validator: (value) {
+                        if (passwordController.text.isNotEmpty &&
+                            value != passwordController.text) {
+                          return 'Mật khẩu xác nhận không khớp';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
                 ),
-
-              const Divider(height: 24),
-              Text(
-                'Lịch làm việc cố định',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 10),
-
-              // --- THÊM CÁC TRƯỜNG LỊCH MỚI ---
-              DropdownButtonFormField<String>(
-                value: _selectedWorkType,
-                decoration: const InputDecoration(
-                  labelText: 'Loại hình làm việc*',
-                ),
-                items: _workTypeOptions.map((type) {
-                  return DropdownMenuItem(value: type, child: Text(type));
-                }).toList(),
-                onChanged: (value) {
-                  if (value != null)
-                    setState(() {
-                      _selectedWorkType = value;
-                    });
-                },
-              ),
-              const SizedBox(height: 10),
-              MultiSelectDialogField<String>(
-                items: _dayOptions
-                    .map((day) => MultiSelectItem(day, day))
-                    .toList(),
-                title: const Text("Chọn ngày làm việc"),
-                selectedColor: Theme.of(context).primaryColor,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                buttonIcon: const Icon(Icons.calendar_today),
-                buttonText: Text(
-                  "Ngày làm cố định",
-                  style: TextStyle(color: Colors.grey[700], fontSize: 16),
-                ),
-                initialValue: _selectedDays,
-                onConfirm: (results) {
-                  setState(() {
-                    _selectedDays = results;
-                  });
-                },
-                chipDisplay: MultiSelectChipDisplay(
-                  onTap: (value) {
-                    setState(() {
-                      _selectedDays.remove(value);
-                    });
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-              MultiSelectDialogField<String>(
-                items: _shiftOptions
-                    .map((shift) => MultiSelectItem(shift, shift))
-                    .toList(),
-                title: const Text("Chọn ca làm việc"),
-                selectedColor: Theme.of(context).primaryColor,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                buttonIcon: const Icon(Icons.access_time),
-                buttonText: Text(
-                  "Ca làm cố định",
-                  style: TextStyle(color: Colors.grey[700], fontSize: 16),
-                ),
-                initialValue: _selectedShifts,
-                onConfirm: (results) {
-                  setState(() {
-                    _selectedShifts = results;
-                  });
-                },
-                chipDisplay: MultiSelectChipDisplay(
-                  onTap: (value) {
-                    setState(() {
-                      _selectedShifts.remove(value);
-                    });
-                  },
-                ),
-              ),
-              // --- KẾT THÚC THÊM TRƯỜNG LỊCH ---
             ],
           ),
         ),

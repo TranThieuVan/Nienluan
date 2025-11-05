@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:myshop/models/staff_profile.dart'; // <-- IMPORT MỚI
+import 'package:myshop/models/staff_profile.dart';
 
 class EmployeeListItem extends StatelessWidget {
-  final StaffProfile profile; // <-- ĐỔI TỪ User SANG StaffProfile
+  final StaffProfile profile;
   final Future<bool> Function(StaffProfile) onDeleteConfirmed;
   final VoidCallback onTap;
 
   const EmployeeListItem({
     super.key,
-    required this.profile, // <-- ĐÃ ĐỔI TÊN
+    required this.profile,
     required this.onDeleteConfirmed,
     required this.onTap,
   });
@@ -40,7 +40,8 @@ class EmployeeListItem extends StatelessWidget {
           profile.name,
           style: const TextStyle(fontWeight: FontWeight.w500),
         ),
-        subtitle: Text('${profile.role.display} - ${profile.email}'),
+        // ❌ Không còn hiển thị Gmail
+        subtitle: Text(profile.role.display),
         trailing: Icon(Icons.edit_note, color: Colors.grey.shade600),
         onTap: onTap,
       ),

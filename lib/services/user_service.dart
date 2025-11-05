@@ -47,23 +47,16 @@ class UserService {
     }
   }
 
-  /// 2. THÊM (CREATE)
-  /// Thêm một nhân viên mới (tạo hồ sơ và tài khoản nếu cần)
+  /// 2. THÊM (CREATE) - (ĐÃ ĐƠN GIẢN HÓA)
   Future<void> addStaffProfile({
     required String name,
     required StaffRole role,
     double salary = 0.0,
-    String? email, // Bắt buộc nếu role cần đăng nhập
-    String? password, // Bắt buộc nếu role cần đăng nhập
-    // --- THÊM CÁC TRƯỜNG LỊCH ---
-    String workType = 'part_time',
-    List<String> defaultDays = const [],
-    List<String> defaultShifts = const [],
+    String? email,
+    String? password,
   }) async {
-    String? newUserId; // Biến để lưu ID tài khoản 'users'
-
+    String? newUserId;
     try {
-      // BƯỚC A: (Giữ nguyên logic tạo 'users' nếu cần)
       if (role.needsLoginAccount) {
         if (email == null || password == null) {
           throw Exception('Email và Mật khẩu là bắt buộc cho vai trò này.');
@@ -83,25 +76,21 @@ class UserService {
         newUserId = userRecord.id;
       }
 
-      // BƯỚC B: Tạo hồ sơ trong 'staff_profiles'
       final profileBody = <String, dynamic>{
         'name': name,
         'role': role.toJson(),
         'salary': salary,
         'status': 'active',
-        // --- THÊM DỮ LIỆU LỊCH VÀO BODY ---
-        'work_type': workType,
-        'default_days': defaultDays,
-        'default_shifts': defaultShifts,
+        // --- CÁC TRƯỜNG LỊCH ĐÃ BỊ XÓA KHỎI ĐÂY ---
+        // (Chúng ta sẽ gán giá trị default từ PocketBase)
       };
 
       if (newUserId != null) {
         profileBody['user_account'] = newUserId;
       }
-
       await pb.collection('staff_profiles').create(body: profileBody);
     } catch (e) {
-      // (Phần xử lý lỗi và rollback giữ nguyên)
+      // ... (Phần rollback lỗi giữ nguyên) ...
       if (newUserId != null) {
         try {
           await pb.collection('users').delete(newUserId);
@@ -139,34 +128,63 @@ class UserService {
     }
   }
 
-  /// 4. SỬA (UPDATE)
-  /// Cập nhật thông tin cơ bản VÀ LỊCH CỐ ĐỊNH của nhân viên
-  Future<void> updateStaffProfileInfo({
+  /// 4. SỬA (UPDATE) - (Đã nâng cấp)
+  /// Cập nhật thông tin hồ sơ và tài khoản (nếu có)
+  Future<void> updateStaffDetails({
+    // Thông tin Profile (Bắt buộc)
     required String profileId,
     required String name,
     required StaffRole role,
     required double salary,
     required String status,
-    // --- THÊM CÁC TRƯỜNG LỊCH ---
-    required String workType,
-    required List<String> defaultDays,
-    required List<String> defaultShifts,
+
+    // Thông tin Account (Tùy chọn)
+    String? userId, // ID của 'users' collection
+    String? newEmail,
+    String? newPassword,
   }) async {
     try {
-      final body = <String, dynamic>{
+      // --- Luôn cập nhật 'staff_profiles' ---
+      final profileBody = <String, dynamic>{
         'name': name,
         'role': role.toJson(),
         'salary': salary,
         'status': status,
-        // --- THÊM DỮ LIỆU LỊCH VÀO BODY ---
-        'work_type': workType,
-        'default_days': defaultDays,
-        'default_shifts': defaultShifts,
       };
-      await pb.collection('staff_profiles').update(profileId, body: body);
+      // (Lưu ý: Logic chuyển đổi vai trò (vd: Chef -> Employee)
+      //  rất phức tạp và sẽ cần xử lý riêng, ở đây ta tạm bỏ qua)
+      await pb
+          .collection('staff_profiles')
+          .update(profileId, body: profileBody);
+
+      // --- Chỉ cập nhật 'users' nếu có thông tin ---
+      if (userId != null && (newEmail != null || newPassword != null)) {
+        final userBody = <String, dynamic>{};
+
+        // Nếu email thay đổi
+        if (newEmail != null) {
+          userBody['email'] = newEmail;
+          userBody['emailVisibility'] = true;
+        }
+
+        // Nếu mật khẩu mới được nhập
+        if (newPassword != null) {
+          userBody['password'] = newPassword;
+          userBody['passwordConfirm'] = newPassword;
+        }
+
+        // (Với quyền Admin, PocketBase cho phép đổi pass mà ko cần pass cũ)
+        await pb.collection('users').update(userId, body: userBody);
+      }
     } catch (e) {
-      print('UserService - Error updating staff info: $e');
-      throw Exception('Failed to update staff info: $e');
+      print('UserService - Error updating details: $e');
+      if (e is ClientException && e.response.containsKey('data')) {
+        final errors = e.response['data'] as Map<String, dynamic>;
+        if (errors.containsKey('email')) {
+          throw Exception('Email này đã tồn tại.');
+        }
+      }
+      throw Exception('Failed to update staff details: $e');
     }
   }
 

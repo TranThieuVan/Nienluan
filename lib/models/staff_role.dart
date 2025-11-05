@@ -1,6 +1,5 @@
 // Enum này sẽ định nghĩa vai trò công việc
 enum StaffRole {
-  manager, // Quản lý
   employee, // Nhân viên phục vụ (có thể đăng nhập)
   chef, // Đầu bếp (không cần đăng nhập)
   cleaner, // Vệ sinh (không cần đăng nhập)
@@ -8,8 +7,6 @@ enum StaffRole {
 
   static StaffRole fromString(String? roleString) {
     switch (roleString) {
-      case 'manager':
-        return StaffRole.manager;
       case 'employee':
         return StaffRole.employee;
       case 'chef':
@@ -31,8 +28,6 @@ enum StaffRole {
   // Chuyển thành chuỗi tiếng Việt để hiển thị
   String get display {
     switch (this) {
-      case StaffRole.manager:
-        return 'Quản lý';
       case StaffRole.employee:
         return 'Nhân viên';
       case StaffRole.chef:
@@ -47,7 +42,6 @@ enum StaffRole {
   // Hàm kiểm tra xem vai trò này có cần tài khoản đăng nhập không
   bool get needsLoginAccount {
     switch (this) {
-      case StaffRole.manager:
       case StaffRole.employee:
         return true; // Chỉ Quản lý và Nhân viên mới cần đăng nhập
       default:
