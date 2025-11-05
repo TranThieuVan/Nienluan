@@ -62,6 +62,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     double salary = 0.0,
     String? email,
     String? password,
+    // Thêm các tham số mới
+    required String workType,
+    required List<String> defaultDays,
+    required List<String> defaultShifts,
   }) async {
     try {
       await pbService.users.addStaffProfile(
@@ -70,6 +74,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         salary: salary,
         email: email,
         password: password,
+        // Truyền dữ liệu lịch
+        workType: workType,
+        defaultDays: defaultDays,
+        defaultShifts: defaultShifts,
       );
       _showSnackbar('Thêm nhân viên $name thành công!', Colors.green);
       _loadStaffProfiles();
@@ -138,26 +146,28 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
 
   // Xử lý cập nhật hồ sơ
   Future<void> _handleUpdateStaffProfile({
-    // <-- ĐÃ SỬA
     required String profileId,
     required String name,
     required StaffRole role,
     required double salary,
     required String status,
+    // Thêm các tham số mới
+    required String workType,
+    required List<String> defaultDays,
+    required List<String> defaultShifts,
   }) async {
     try {
-      //*** LƯU Ý QUAN TRỌNG:
-      // Code này chưa xử lý việc:
-      // 1. Chuyển từ 'Chef' (không login) -> 'Employee' (cần login)
-      // 2. Chuyển từ 'Employee' (có login) -> 'Chef' (không cần login)
-      // Đây là logic phức tạp, tạm thời chỉ cập nhật thông tin.
-
+      // (Bỏ qua logic chuyển đổi vai trò phức tạp)
       await pbService.users.updateStaffProfileInfo(
         profileId: profileId,
         name: name,
         role: role,
         salary: salary,
         status: status,
+        // Truyền dữ liệu lịch
+        workType: workType,
+        defaultDays: defaultDays,
+        defaultShifts: defaultShifts,
       );
       _showSnackbar('Cập nhật thông tin thành công!', Colors.green);
       _loadStaffProfiles(); // Làm mới danh sách

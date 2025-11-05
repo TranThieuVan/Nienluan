@@ -55,17 +55,19 @@ class UserService {
     double salary = 0.0,
     String? email, // Bắt buộc nếu role cần đăng nhập
     String? password, // Bắt buộc nếu role cần đăng nhập
+    // --- THÊM CÁC TRƯỜNG LỊCH ---
+    String workType = 'part_time',
+    List<String> defaultDays = const [],
+    List<String> defaultShifts = const [],
   }) async {
     String? newUserId; // Biến để lưu ID tài khoản 'users'
 
     try {
-      // BƯỚC A: Nếu vai trò này (Manager/Employee) cần đăng nhập
+      // BƯỚC A: (Giữ nguyên logic tạo 'users' nếu cần)
       if (role.needsLoginAccount) {
         if (email == null || password == null) {
           throw Exception('Email và Mật khẩu là bắt buộc cho vai trò này.');
         }
-
-        // Tạo tài khoản trong 'users' trước
         final userRecord = await pb
             .collection('users')
             .create(
@@ -74,11 +76,11 @@ class UserService {
                 'password': password,
                 'passwordConfirm': password,
                 'emailVisibility': true,
-                'name': name, // Dùng tên thật cho 'name' của user
-                'role': role.name, // 'manager' hoặc 'employee'
+                'name': name,
+                'role': role.name,
               },
             );
-        newUserId = userRecord.id; // Lưu lại ID
+        newUserId = userRecord.id;
       }
 
       // BƯỚC B: Tạo hồ sơ trong 'staff_profiles'
@@ -87,17 +89,19 @@ class UserService {
         'role': role.toJson(),
         'salary': salary,
         'status': 'active',
+        // --- THÊM DỮ LIỆU LỊCH VÀO BODY ---
+        'work_type': workType,
+        'default_days': defaultDays,
+        'default_shifts': defaultShifts,
       };
 
-      // Nếu đã tạo user, liên kết nó lại
       if (newUserId != null) {
         profileBody['user_account'] = newUserId;
       }
 
       await pb.collection('staff_profiles').create(body: profileBody);
     } catch (e) {
-      // XỬ LÝ LỖI: Nếu đã lỡ tạo 'users' mà lỗi khi tạo 'profile',
-      // chúng ta phải XÓA cái 'users' vừa tạo đi (để tránh rác)
+      // (Phần xử lý lỗi và rollback giữ nguyên)
       if (newUserId != null) {
         try {
           await pb.collection('users').delete(newUserId);
@@ -107,8 +111,6 @@ class UserService {
           );
         }
       }
-
-      // Ném lỗi gốc
       print('UserService - Error adding staff: $e');
       if (e is ClientException && e.response.containsKey('data')) {
         final errors = e.response['data'] as Map<String, dynamic>;
@@ -138,14 +140,17 @@ class UserService {
   }
 
   /// 4. SỬA (UPDATE)
-  /// Cập nhật thông tin cơ bản của nhân viên (tên, lương, vai trò)
-  /// (Việc đổi mật khẩu sẽ do chính nhân viên đó tự làm)
+  /// Cập nhật thông tin cơ bản VÀ LỊCH CỐ ĐỊNH của nhân viên
   Future<void> updateStaffProfileInfo({
     required String profileId,
     required String name,
     required StaffRole role,
     required double salary,
     required String status,
+    // --- THÊM CÁC TRƯỜNG LỊCH ---
+    required String workType,
+    required List<String> defaultDays,
+    required List<String> defaultShifts,
   }) async {
     try {
       final body = <String, dynamic>{
@@ -153,6 +158,10 @@ class UserService {
         'role': role.toJson(),
         'salary': salary,
         'status': status,
+        // --- THÊM DỮ LIỆU LỊCH VÀO BODY ---
+        'work_type': workType,
+        'default_days': defaultDays,
+        'default_shifts': defaultShifts,
       };
       await pb.collection('staff_profiles').update(profileId, body: body);
     } catch (e) {

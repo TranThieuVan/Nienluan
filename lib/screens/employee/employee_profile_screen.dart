@@ -3,6 +3,7 @@ import 'package:myshop/models/staff_profile.dart'; // <-- IMPORT MỚI
 import 'package:myshop/services/pocketbase_service.dart';
 import 'package:myshop/screens/employee/edit_profile_screen.dart';
 import 'package:myshop/screens/employee/notification_screen.dart';
+import 'package:myshop/screens/employee/schedule_screen.dart'; // <-- THÊM IMPORT NÀY
 
 class EmployeeProfileScreen extends StatefulWidget {
   const EmployeeProfileScreen({super.key});
@@ -132,12 +133,17 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
           trailing: const Icon(Icons.chevron_right),
           onTap: _navigateToEditProfile,
         ),
-        ListTile(
+ListTile(
           leading: const Icon(Icons.calendar_month),
           title: const Text('Xem lịch làm việc'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
-            _navigateTo(const _PlaceholderScreen(title: 'Lịch làm việc'));
+            if (currentProfile != null) {
+              _navigateTo(
+                // Điều hướng đến màn hình lịch thật
+                ScheduleScreen(profile: currentProfile!), // <-- ĐÃ SỬA
+              );
+            }
           },
         ),
         ListTile(

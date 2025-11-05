@@ -7,6 +7,7 @@ import 'package:myshop/screens/manager/employee_management_screen.dart';
 import 'package:myshop/screens/manager/manage_menu.dart';
 import 'package:myshop/screens/manager/reports.dart'; // (Giả định bạn cũng có file này)
 import 'package:myshop/screens/manager/notification_management_screen.dart';
+import 'package:myshop/screens/manager/schedule_management_screen.dart';
 
 // Lớp dữ liệu (Giữ nguyên)
 class _ManagerAction {
@@ -73,6 +74,12 @@ class ManagerHome extends StatelessWidget {
         icon: Icons.campaign,
         color: Colors.purple.shade600,
         screen: const NotificationManagementScreen(),
+      ),
+      _ManagerAction(
+        title: "Lịch làm việc",
+        icon: Icons.calendar_month_outlined,
+        color: Colors.teal.shade600,
+        screen: const ScheduleManagementScreen(), // Màn hình Hub (Bước 3)
       ),
     ];
   }
