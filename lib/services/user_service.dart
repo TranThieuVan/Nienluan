@@ -234,4 +234,25 @@ class UserService {
       throw Exception('Failed to update name: $e');
     }
   }
+
+  /// Cập nhật các trường lịch làm việc cố định cho một hồ sơ nhân viên
+  Future<void> updateStaffDefaultSchedule({
+    required String profileId,
+    required String workType,
+    required List<String> defaultDays,
+    required List<String> defaultShifts,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'work_type': workType,
+        'default_days': defaultDays,
+        'default_shifts': defaultShifts,
+      };
+
+      await pb.collection('staff_profiles').update(profileId, body: body);
+    } catch (e) {
+      print('UserService - Error updating default schedule: $e');
+      throw Exception('Failed to update default schedule: $e');
+    }
+  }
 }

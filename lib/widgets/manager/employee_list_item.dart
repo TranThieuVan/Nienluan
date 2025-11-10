@@ -42,7 +42,7 @@ class EmployeeListItem extends StatelessWidget {
         ),
         // ❌ Không còn hiển thị Gmail
         subtitle: Text(profile.role.display),
-        trailing: Icon(Icons.edit_note, color: Colors.grey.shade600),
+        trailing: Icon(Icons.chevron_right, color: Colors.grey.shade600),
         onTap: onTap,
       ),
     );

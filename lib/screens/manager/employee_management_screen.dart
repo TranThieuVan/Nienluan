@@ -6,6 +6,7 @@ import 'package:myshop/models/staff_role.dart';
 import 'package:myshop/widgets/manager/employee_list_view.dart';
 import 'package:myshop/widgets/manager/add_employee_dialog.dart';
 import 'package:myshop/widgets/manager/edit_employee_dialog.dart';
+import 'package:myshop/screens/manager/employee_detail_screen.dart';
 
 class EmployeeManagementScreen extends StatefulWidget {
   const EmployeeManagementScreen({super.key});
@@ -121,18 +122,19 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     return false;
   }
 
-  // Hiển thị Dialog Sửa
-  void _showEditEmployeeDialog(StaffProfile profile) {
-    // <-- ĐÃ SỬA
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return EditEmployeeDialog(
-          profile: profile, // <-- ĐÃ SỬA
-          onUpdate: _handleUpdateStaffDetails, // <-- ĐÃ SỬA
-        );
-      },
+  void _navigateToDetail(StaffProfile profile) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => EmployeeDetailScreen(
+          profile: profile,
+          // Truyền hàm onUpdate vào
+          onUpdateDetails: _handleUpdateStaffDetails,
+          // Truyền hàm yêu cầu tải lại list
+          onProfileUpdated: () {
+            _loadStaffProfiles();
+          },
+        ),
+      ),
     );
   }
 
@@ -228,7 +230,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
             return EmployeeListView(
               profiles: profiles, // <-- ĐÃ SỬA
               onDeleteConfirmed: _handleDeleteStaffProfile, // <-- ĐÃ SỬA
-              onEdit: _showEditEmployeeDialog, // <-- ĐÃ SỬA
+              onView: _navigateToDetail,
             );
           },
         ),

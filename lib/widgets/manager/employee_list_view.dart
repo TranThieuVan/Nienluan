@@ -5,13 +5,13 @@ import 'employee_list_item.dart'; // Sửa tên file này nếu bạn đổi ở
 class EmployeeListView extends StatelessWidget {
   final List<StaffProfile> profiles; // <-- ĐỔI TỪ User SANG StaffProfile
   final Future<bool> Function(StaffProfile) onDeleteConfirmed;
-  final void Function(StaffProfile) onEdit;
+  final void Function(StaffProfile) onView;
 
   const EmployeeListView({
     super.key,
     required this.profiles,
     required this.onDeleteConfirmed,
-    required this.onEdit,
+    required this.onView,
   });
 
   @override
@@ -35,7 +35,7 @@ class EmployeeListView extends StatelessWidget {
           // Sửa tên Widget nếu bạn đổi file 1
           profile: profile, // <-- Đã đổi
           onDeleteConfirmed: onDeleteConfirmed,
-          onTap: () => onEdit(profile),
+          onTap: () => onView(profile),
         );
       },
       separatorBuilder: (context, index) => const Divider(height: 1),
