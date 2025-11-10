@@ -1,9 +1,11 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/employee/schedule_screen.dart]
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:myshop/models/schedule_exception.dart';
 import 'package:myshop/models/staff_profile.dart';
 import 'package:myshop/services/pocketbase_service.dart';
-import 'package:myshop/models/schedule_view.dart'; // <-- IMPORT LOGIC MỚI
+import 'package:myshop/models/schedule_view.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 class ScheduleScreen extends StatefulWidget {
@@ -26,33 +28,69 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   ScheduleView? _scheduleView;
   late Future<void> _loadScheduleFuture;
 
+  // --- SỬA Ở ĐÂY ---
+  // Lưu profile vào state để có thể cập nhật
+  late StaffProfile _currentProfile;
+
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
+    _currentProfile = widget.profile; // <-- SỬA Ở ĐÂY
+
     // Tải dữ liệu ngoại lệ khi mở màn hình
-    _loadScheduleFuture = _loadExceptions(DateTime.now());
+    // _loadExceptions giờ sẽ tự tạo _scheduleView
+    _loadScheduleFuture = _loadScheduleData(_focusedDay); // <-- SỬA Ở ĐÂY
   }
 
-  // Tải các "ngoại lệ" xung quanh một ngày
-  Future<void> _loadExceptions(DateTime date) async {
+  // --- HÀM NÀY ĐÃ ĐƯỢC SỬA LẠI (SỬA LỖI KHÔNG HIỂN THỊ) ---
+  // Tải cả Profile (lịch cố định) VÀ Ngoại lệ
+  Future<void> _loadScheduleData(DateTime date) async {
     // Tải dữ liệu +/- 1 tháng xung quanh ngày được chọn
     final startDate = DateTime(date.year, date.month - 1, 1);
     final endDate = DateTime(date.year, date.month + 2, 0);
 
-    final exceptions = await pbService.schedules.getScheduleExceptions(
-      staffProfileId: widget.profile.id,
-      startDate: startDate,
-      endDate: endDate,
-    );
+    // Sử dụng Future.wait để tải cả hai song song
+    try {
+      final results = await Future.wait([
+        // 1. Tải lại profile mới nhất (để lấy default_schedule mới)
+        pbService.users.getStaffProfile(_currentProfile.id),
 
-    if (mounted) {
-      setState(() {
-        _scheduleView = ScheduleView(
-          profile: widget.profile,
-          exceptions: exceptions,
-        );
-      });
+        // 2. Tải ngoại lệ
+        pbService.schedules.getScheduleExceptions(
+          staffProfileId: _currentProfile.id,
+          startDate: startDate,
+          endDate: endDate,
+        ),
+      ]);
+
+      // Gán kết quả
+      final newProfile = results[0] as StaffProfile;
+      final exceptions = results[1] as List<ScheduleExceptionModel>;
+
+      if (mounted) {
+        setState(() {
+          // Cập nhật cả profile và scheduleView
+          _currentProfile = newProfile;
+          _scheduleView = ScheduleView(
+            profile: _currentProfile, // <-- Dùng profile MỚI
+            exceptions: exceptions,
+          );
+        });
+      }
+    } catch (e) {
+      print("Lỗi khi tải _loadScheduleData: $e");
+      if (mounted) {
+        // Hiển thị lỗi nếu có
+        setState(() {
+          // Vẫn tạo scheduleView với profile cũ để app không crash
+          _scheduleView = ScheduleView(
+            profile: _currentProfile,
+            exceptions: [],
+          );
+        });
+      }
+      // (Bạn có thể thêm 1 biến _error để hiển thị lỗi ra UI)
     }
   }
 
@@ -100,18 +138,23 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   // Widget hiển thị Lịch (Tuần/Tháng)
   Widget _buildTableCalendar() {
     return TableCalendar(
-      locale: 'vi_VN', // Cần thêm 'package:flutter_localizations' để hỗ trợ TV
+      locale: 'vi_VN',
       firstDay: DateTime.utc(2020, 1, 1),
       lastDay: DateTime.utc(2030, 12, 31),
       focusedDay: _focusedDay,
       calendarFormat: _calendarFormat,
       selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
 
+      // --- SỬA Ở ĐÂY ---
       // Xử lý khi đổi trang (tháng/tuần)
       onPageChanged: (focusedDay) {
-        _focusedDay = focusedDay;
-        _loadExceptions(focusedDay); // Tải lại ngoại lệ cho tháng mới
+        if (!isSameDay(_focusedDay, focusedDay)) {
+          _focusedDay = focusedDay;
+          // Tải lại cả profile và ngoại lệ cho tháng mới
+          _loadScheduleData(focusedDay);
+        }
       },
+      // --- KẾT THÚC SỬA ---
 
       // Xử lý khi bấm vào 1 ngày
       onDaySelected: (selectedDay, focusedDay) {
@@ -128,9 +171,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         });
       },
 
-      // --- Phần quan trọng: Tùy biến giao diện ngày ---
+      // Tùy biến giao diện ngày
       calendarBuilders: CalendarBuilders(
-        // Tùy biến các ngày có lịch làm (builder cho từng ngày)
         defaultBuilder: (context, day, focusedDay) {
           final schedule = _getScheduleForDay(day);
           if (schedule.status == WorkStatus.working) {
@@ -171,7 +213,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               ),
             );
           }
-          return null; // Trả về null để dùng giao diện mặc định (ngày nghỉ)
+          return null; // Dùng giao diện mặc định (ngày nghỉ)
         },
       ),
     );
@@ -209,7 +251,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         break;
     }
 
-    // Thêm tên ngày (VD: "Thứ Ba, 05/11/2025")
     final dayTitle = DateFormat(
       'EEEE, dd/MM/yyyy',
       'vi_VN',

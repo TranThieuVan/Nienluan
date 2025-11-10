@@ -1,3 +1,5 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/models/staff_profile.dart]
+
 import 'package:pocketbase/pocketbase.dart';
 import 'package:myshop/models/staff_role.dart';
 import 'package:myshop/models/user.dart';
@@ -13,11 +15,9 @@ class StaffProfile {
   final DateTime updated;
   final User? userAccount;
 
-  // --- THÊM CÁC TRƯỜNG MỚI CHO LỊCH ---
-  final String workType; // 'full_time', 'part_time'
-  final List<String> defaultDays; // ['T2', 'T3', 'T4', ...]
-  final List<String> defaultShifts; // ['Ca sáng', 'Ca chiều', ...]
-  // --- KẾT THÚC THÊM ---
+  // --- SỬA Ở ĐÂY (Đã xóa workType) ---
+  final Map<String, List<String>> defaultSchedule;
+  // --- KẾT THÚC SỬA ---
 
   StaffProfile({
     required this.id,
@@ -29,10 +29,8 @@ class StaffProfile {
     required this.created,
     required this.updated,
     this.userAccount,
-    // --- THÊM VÀO CONSTRUCTOR ---
-    required this.workType,
-    this.defaultDays = const [], // Mặc định là list rỗng
-    this.defaultShifts = const [], // Mặc định là list rỗng
+    // --- SỬA CONSTRUCTOR ---
+    this.defaultSchedule = const {},
   });
 
   factory StaffProfile.fromRecord(RecordModel record) {
@@ -44,9 +42,31 @@ class StaffProfile {
       }
     }
 
-    // Chuyển đổi List<dynamic> (từ PocketBase) -> List<String>
-    final days = List<String>.from(record.data['default_days'] ?? []);
-    final shifts = List<String>.from(record.data['default_shifts'] ?? []);
+    // --- LOGIC ĐỌC JSON MỚI ---
+    final scheduleData = record.data['default_schedule'];
+    final Map<String, List<String>> schedule = {};
+
+    // Khởi tạo tất cả các ngày
+    const List<String> allDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+    for (var day in allDays) {
+      schedule[day] = []; // Mặc định là danh sách rỗng
+    }
+
+    // Kiểm tra xem scheduleData có phải là Map không
+    if (scheduleData is Map) {
+      // Lặp qua từng entry (ví dụ: 'T2': ['Ca sáng', 'Ca chiều'])
+      for (final entry in scheduleData.entries) {
+        final key = entry.key as String;
+        final value = entry.value;
+
+        // Kiểm tra xem value có phải là List không
+        if (value is List) {
+          // Ghi đè lên danh sách rỗng nếu có dữ liệu
+          schedule[key] = value.map((item) => item.toString()).toList();
+        }
+      }
+    }
+    // --- KẾT THÚC LOGIC ĐỌC JSON ---
 
     return StaffProfile(
       id: record.id,
@@ -58,11 +78,8 @@ class StaffProfile {
       created: DateTime.parse(record.created),
       updated: DateTime.parse(record.updated),
       userAccount: expandedUser,
-
-      // --- LẤY DỮ LIỆU TỪ RECORD ---
-      workType: record.getStringValue('work_type'),
-      defaultDays: days,
-      defaultShifts: shifts,
+      // Gán map đã xử lý
+      defaultSchedule: schedule,
     );
   }
 

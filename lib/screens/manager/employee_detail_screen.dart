@@ -1,4 +1,4 @@
-// [FILE MỚI: lib/screens/manager/employee_detail_screen.dart]
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/employee_detail_screen.dart]
 
 import 'package:flutter/material.dart';
 import 'package:myshop/models/staff_profile.dart';
@@ -52,32 +52,43 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
                 String? newEmail,
                 String? newPassword,
               }) async {
-                // 1. Gọi hàm update service
-                await widget.onUpdateDetails(
-                  profileId: profileId,
-                  name: name,
-                  role: role,
-                  salary: salary,
-                  status: status,
-                  userId: userId,
-                  newEmail: newEmail,
-                  newPassword: newPassword,
-                );
+                try {
+                  // 1. Gọi hàm update service
+                  await widget.onUpdateDetails(
+                    profileId: profileId,
+                    name: name,
+                    role: role,
+                    salary: salary,
+                    status: status,
+                    userId: userId,
+                    newEmail: newEmail,
+                    newPassword: newPassword,
+                  );
 
-                // 2. Tải lại thông tin mới từ DB
-                final pbService = PocketBaseService.instance;
-                final updatedProfile = await pbService.users
-                    .getStaffProfileForUser(
-                      _currentProfile.userId ?? profileId,
+                  // 2. Tải lại thông tin mới từ DB (SỬA LỖI)
+                  final pbService = PocketBaseService.instance;
+                  // Dùng hàm getStaffProfile mới, luôn hoạt động
+                  final updatedProfile = await pbService.users.getStaffProfile(
+                    _currentProfile.id,
+                  );
+
+                  // 3. Cập nhật UI của màn hình này
+                  setState(() {
+                    _currentProfile = updatedProfile;
+                  });
+
+                  // 4. Báo cho màn hình management tải lại
+                  widget.onProfileUpdated();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Lỗi tải lại chi tiết: $e'),
+                        backgroundColor: Colors.red,
+                      ),
                     );
-
-                // 3. Cập nhật UI của màn hình này
-                setState(() {
-                  _currentProfile = updatedProfile;
-                });
-
-                // 4. Báo cho màn hình management tải lại
-                widget.onProfileUpdated();
+                  }
+                }
               },
         );
       },
@@ -172,7 +183,22 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
     );
   }
 
+  // --- HÀM ĐÃ SỬA LỖI (Xóa workType) ---
   Widget _buildScheduleCard() {
+    // Lọc ra những ngày có ca làm
+    final List<Widget> scheduleRows = [];
+    _currentProfile.defaultSchedule.forEach((day, shifts) {
+      if (shifts.isNotEmpty) {
+        scheduleRows.add(
+          _InfoRow(
+            icon: Icons.calendar_today,
+            label: day, // Ví dụ: T2
+            value: shifts.join(', '), // Ví dụ: Ca sáng, Ca chiều
+          ),
+        );
+      }
+    });
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16.0),
       child: Padding(
@@ -185,21 +211,21 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const Divider(),
-            _InfoRow(
-              icon: Icons.work_history,
-              label: 'Hình thức',
-              value: _currentProfile.workType,
-            ),
-            _InfoRow(
-              icon: Icons.calendar_today,
-              label: 'Ngày làm',
-              value: _currentProfile.defaultDays.join(', '),
-            ),
-            _InfoRow(
-              icon: Icons.access_time,
-              label: 'Ca làm',
-              value: _currentProfile.defaultShifts.join(', '),
-            ),
+
+            // --- DÒNG workType ĐÃ BỊ XÓA ---
+
+            // Nếu không có lịch cố định nào
+            if (scheduleRows.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8.0),
+                child: Text(
+                  'Chưa có lịch cố định.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            // Nếu có, hiển thị các ngày làm
+            else
+              ...scheduleRows,
           ],
         ),
       ),
@@ -224,14 +250,18 @@ class _InfoRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start, // Cho phép xuống dòng
         children: [
           Icon(icon, color: Colors.indigo.shade300, size: 20),
           const SizedBox(width: 16),
           Text(label, style: const TextStyle(color: Colors.grey)),
-          const Spacer(),
-          Text(
-            value.isNotEmpty ? value : 'N/A',
-            style: const TextStyle(fontWeight: FontWeight.w500),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              value.isNotEmpty ? value : 'N/A',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+              textAlign: TextAlign.right, // Căn phải cho đẹp
+            ),
           ),
         ],
       ),

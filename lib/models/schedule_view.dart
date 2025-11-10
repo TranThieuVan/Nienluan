@@ -1,3 +1,5 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/models/schedule_view.dart]
+
 import 'package:myshop/models/schedule_exception.dart';
 import 'package:myshop/models/staff_profile.dart';
 import 'package:intl/intl.dart';
@@ -17,23 +19,25 @@ class DailySchedule {
 class ScheduleView {
   final StaffProfile profile;
   final List<ScheduleExceptionModel> exceptions;
+
+  // Map từ weekday (1=Thứ 2) sang key của JSON ('T2')
   final Map<int, String> _weekdayMap = {
     1: 'T2',
-    7: 'CN',
     2: 'T3',
     3: 'T4',
     4: 'T5',
     5: 'T6',
     6: 'T7',
+    7: 'CN',
   };
 
   ScheduleView({required this.profile, required this.exceptions});
 
   // Hàm quan trọng nhất: Trả về lịch làm việc cho một ngày cụ thể
-  DailySchedule getScheduleForDay(DateTime date) {
+  DailySchedule getScheduleForDay(DateTime day) {
     // 1. Kiểm tra "Ngoại lệ" (Exceptions) trước - (Ưu tiên cao nhất)
     for (final ex in exceptions) {
-      if (isSameDay(ex.date, date)) {
+      if (isSameDay(ex.date, day)) {
         if (ex.type == ScheduleExceptionType.absent) {
           return DailySchedule(status: WorkStatus.absent); // Nghỉ
         }
@@ -46,18 +50,22 @@ class ScheduleView {
       }
     }
 
-    // 2. Kiểm tra "Lịch Cố Định" (Default Schedule)
-    final String weekday = _weekdayMap[date.weekday]!; // Lấy T2, T3...
+    // 2. Kiểm tra "Lịch Cố Định" (Default Schedule) - LOGIC MỚI
+    final String weekdayKey = _weekdayMap[day.weekday]!; // Lấy T2, T3...
 
-    // Nếu hôm đó KHÔNG có trong danh sách ngày làm cố định
-    if (!profile.defaultDays.contains(weekday)) {
+    // Lấy danh sách ca làm từ Map JSON
+    // Nếu không có key `weekdayKey` trong Map, trả về list rỗng
+    final List<String> shiftsForDay = profile.defaultSchedule[weekdayKey] ?? [];
+
+    // Nếu danh sách ca làm của ngày hôm đó LÀ RỖNG
+    if (shiftsForDay.isEmpty) {
       return DailySchedule(status: WorkStatus.offDay); // Ngày nghỉ
     }
 
-    // Nếu hôm đó CÓ trong lịch làm cố định
+    // Nếu hôm đó CÓ ca làm việc
     return DailySchedule(
       status: WorkStatus.working,
-      shifts: profile.defaultShifts, // Lấy các ca cố định
+      shifts: shiftsForDay, // Lấy các ca cố định từ Map
     );
   }
 

@@ -1,7 +1,9 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/schedule_management_screen.dart]
+
 import 'package:flutter/material.dart';
 import 'package:myshop/models/staff_profile.dart';
 import 'package:myshop/services/pocketbase_service.dart';
-import 'staff_schedule_detail_screen.dart'; // Màn hình vừa tạo ở Bước 2
+import 'staff_schedule_detail_screen.dart';
 
 class ScheduleManagementScreen extends StatefulWidget {
   const ScheduleManagementScreen({super.key});
@@ -29,13 +31,20 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> {
     }
   }
 
-  void _navigateToExceptions(StaffProfile profile) {
-    Navigator.of(context).push(
+  // --- SỬA HÀM NÀY (ĐỂ TẢI LẠI DỮ LIỆU) ---
+  void _navigateToExceptions(StaffProfile profile) async {
+    // Chờ màn hình StaffScheduleDetailScreen đóng lại
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => StaffScheduleDetailScreen(profile: profile),
       ),
     );
+
+    // Sau khi màn hình đó đóng, tải lại danh sách
+    // để cập nhật profile mới nhất (nếu có thay đổi)
+    _loadStaffProfiles();
   }
+  // --- KẾT THÚC SỬA ---
 
   @override
   Widget build(BuildContext context) {

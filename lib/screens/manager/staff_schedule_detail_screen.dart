@@ -1,8 +1,7 @@
-// [CODE MỚI HOÀN TOÀN CHO lib/screens/manager/staff_schedule_detail_screen.dart]
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/staff_schedule_detail_screen.dart]
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:multi_select_flutter/multi_select_flutter.dart';
 import 'package:myshop/models/schedule_exception.dart';
 import 'package:myshop/models/staff_profile.dart';
 import 'package:myshop/services/pocketbase_service.dart';
@@ -11,7 +10,7 @@ import 'package:myshop/widgets/manager/add_exception_dialog.dart';
 // Định nghĩa các hằng số cho form
 const List<String> _allWorkDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 const List<String> _allShifts = ['Ca sáng', 'Ca chiều', 'Ca tối'];
-const List<String> _allWorkTypes = ['full_time', 'part_time'];
+// const List<String> _allWorkTypes = ['full_time', 'part_time']; // <-- ĐÃ XÓA
 
 class StaffScheduleDetailScreen extends StatefulWidget {
   final StaffProfile profile;
@@ -34,9 +33,8 @@ class _StaffScheduleDetailScreenState extends State<StaffScheduleDetailScreen>
 
   // State cho Tab Lịch Cố Định
   final _formKey = GlobalKey<FormState>();
-  late String _selectedWorkType;
-  late List<String> _selectedDays;
-  late List<String> _selectedShifts;
+  // late String _selectedWorkType; // <-- ĐÃ XÓA
+  late Map<String, Set<String>> _scheduleMap;
   bool _isSavingSchedule = false;
 
   @override
@@ -46,12 +44,16 @@ class _StaffScheduleDetailScreenState extends State<StaffScheduleDetailScreen>
     _loadExceptions();
 
     // Khởi tạo Tab Lịch Cố Định
-    _selectedWorkType = widget.profile.workType;
-    _selectedDays = List<String>.from(widget.profile.defaultDays);
-    _selectedShifts = List<String>.from(widget.profile.defaultShifts);
+    // _selectedWorkType = widget.profile.workType; // <-- ĐÃ XÓA
+
+    _scheduleMap = {};
+    for (var day in _allWorkDays) {
+      final shiftsForDay = widget.profile.defaultSchedule[day] ?? [];
+      _scheduleMap[day] = Set<String>.from(shiftsForDay);
+    }
   }
 
-  // --- LOGIC CHO TAB NGOẠI LỆ ---
+  // --- LOGIC CHO TAB NGOẠI LỆ (Giữ nguyên) ---
   Future<void> _loadExceptions() async {
     if (mounted) {
       setState(() {
@@ -104,20 +106,28 @@ class _StaffScheduleDetailScreenState extends State<StaffScheduleDetailScreen>
       },
     );
   }
+  // --- KẾT THÚC LOGIC TAB NGOẠI LỆ ---
 
-  // --- LOGIC CHO TAB LỊCH CỐ ĐỊNH ---
+  // --- LOGIC CHO TAB LỊCH CỐ ĐỊNH (SỬA LỖI KHÔNG LƯU) ---
   Future<void> _saveDefaultSchedule() async {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() {
         _isSavingSchedule = true;
       });
+
+      final Map<String, List<String>> scheduleToSave = {};
+      _scheduleMap.forEach((day, shiftsSet) {
+        scheduleToSave[day] = shiftsSet.toList()..sort();
+      });
+
       try {
+        // --- SỬA Ở ĐÂY (Đã xóa workType) ---
         await pbService.users.updateStaffDefaultSchedule(
           profileId: widget.profile.id,
-          workType: _selectedWorkType,
-          defaultDays: _selectedDays,
-          defaultShifts: _selectedShifts,
+          defaultSchedule: scheduleToSave, // Gửi Map mới
         );
+        // --- KẾT THÚC SỬA ---
+
         if (mounted) _showSnackbar('Đã lưu lịch cố định!', Colors.green);
       } catch (e) {
         if (mounted) _showSnackbar('Lỗi lưu lịch: $e', Colors.red);
@@ -135,6 +145,41 @@ class _StaffScheduleDetailScreenState extends State<StaffScheduleDetailScreen>
       context,
     ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
+
+  // Hàm xử lý khi bấm vào 1 ô Checkbox lẻ
+  void _toggleShift(String day, String shift, bool? isSelected) {
+    setState(() {
+      if (isSelected == true) {
+        _scheduleMap[day]!.add(shift);
+      } else {
+        _scheduleMap[day]!.remove(shift);
+      }
+    });
+  }
+
+  // Hàm xử lý khi bấm "chọn tất cả" THEO NGÀY (Hàng)
+  void _toggleAllShiftsForDay(String day, bool? isSelected) {
+    setState(() {
+      if (isSelected == true) {
+        _scheduleMap[day] = Set<String>.from(_allShifts);
+      } else {
+        _scheduleMap[day] = <String>{};
+      }
+    });
+  }
+
+  // Hàm kiểm tra trạng thái Checkbox "chọn tất cả" THEO NGÀY (Hàng)
+  bool? _getSelectAllStateForDay(String day) {
+    final shiftsForDay = _scheduleMap[day]!;
+    if (shiftsForDay.isEmpty) {
+      return false;
+    }
+    if (shiftsForDay.length == _allShifts.length) {
+      return true;
+    }
+    return null; // Tristate (dấu gạch ngang)
+  }
+  // --- KẾT THÚC LOGIC TAB LỊCH CỐ ĐỊNH ---
 
   @override
   Widget build(BuildContext context) {
@@ -162,87 +207,162 @@ class _StaffScheduleDetailScreenState extends State<StaffScheduleDetailScreen>
     );
   }
 
-  // --- WIDGET CHO TAB 1: LỊCH CỐ ĐỊNH ---
+  // --- WIDGET CHO TAB 1: LỊCH CỐ ĐỊNH (Giao diện tối ưu đã xóa workType) ---
   Widget _buildDefaultScheduleTab() {
     return Form(
       key: _formKey,
-      child: ListView(
-        padding: const EdgeInsets.all(16.0),
+      child: Column(
         children: [
-          DropdownButtonFormField<String>(
-            value: _allWorkTypes.contains(_selectedWorkType)
-                ? _selectedWorkType
-                : _allWorkTypes.first,
-            decoration: const InputDecoration(
-              labelText: 'Loại hình làm việc',
-              border: OutlineInputBorder(),
-            ),
-            items: _allWorkTypes.map((type) {
-              return DropdownMenuItem(
-                value: type,
-                child: Text(
-                  type == 'full_time' ? 'Toàn thời gian' : 'Bán thời gian',
-                ),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) setState(() => _selectedWorkType = value);
-            },
-          ),
-          const SizedBox(height: 16),
-          MultiSelectChipField<String>(
-            items: _allWorkDays
-                .map((day) => MultiSelectItem(day, day))
-                .toList(),
-            title: const Text("Ngày làm việc cố định"),
-            headerColor: Colors.teal.withOpacity(0.1),
-            selectedChipColor: Colors.teal,
-            selectedTextStyle: const TextStyle(color: Colors.white),
-            initialValue: _selectedDays,
-            onTap: (values) {
-              _selectedDays = values;
-            },
-          ),
-          const SizedBox(height: 16),
-          MultiSelectChipField<String>(
-            items: _allShifts
-                .map((shift) => MultiSelectItem(shift, shift))
-                .toList(),
-            title: const Text("Ca làm việc cố định"),
-            headerColor: Colors.teal.withOpacity(0.1),
-            selectedChipColor: Colors.teal,
-            selectedTextStyle: const TextStyle(color: Colors.white),
-            initialValue: _selectedShifts,
-            onTap: (values) {
-              _selectedShifts = values;
-            },
-          ),
-          const SizedBox(height: 32),
-          ElevatedButton.icon(
-            icon: _isSavingSchedule
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+          // 1. Bảng Lịch (Grid)
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal, // Cho phép cuộn ngang
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Table(
+                  border: TableBorder(
+                    horizontalInside: BorderSide(
+                      color: Colors.grey.shade300,
+                      width: 1,
                     ),
-                  )
-                : const Icon(Icons.save),
-            label: Text(_isSavingSchedule ? 'Đang lưu...' : 'Lưu Lịch Cố Định'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.teal,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+                    verticalInside: BorderSide(
+                      color: Colors.grey.shade300,
+                      width: 1,
+                    ),
+                  ),
+                  // Đặt độ rộng cố định
+                  columnWidths: const {
+                    0: FixedColumnWidth(110), // Cột Ngày (Rộng hơn)
+                    1: FixedColumnWidth(80), // Cột Sáng
+                    2: FixedColumnWidth(80), // Cột Chiều
+                    3: FixedColumnWidth(80), // Cột Tối
+                  },
+                  children: [
+                    _buildHeaderRow(), // Dòng tiêu đề
+                    ..._allWorkDays.map((day) {
+                      // Dòng cho mỗi ngày
+                      return _buildDayScheduleRow(day);
+                    }),
+                  ],
+                ),
+              ),
             ),
-            onPressed: _isSavingSchedule ? null : _saveDefaultSchedule,
+          ),
+
+          // 2. Nút Lưu
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ElevatedButton.icon(
+              icon: _isSavingSchedule
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save),
+              label: Text(
+                _isSavingSchedule ? 'Đang lưu...' : 'Lưu Lịch Cố Định',
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                minimumSize: const Size(double.infinity, 50),
+              ),
+              onPressed: _isSavingSchedule ? null : _saveDefaultSchedule,
+            ),
           ),
         ],
       ),
     );
   }
 
-  // --- WIDGET CHO TAB 2: NGOẠI LỆ ---
+  // Widget con: Dòng Tiêu đề (Ca Sáng, Chiều, Tối)
+  TableRow _buildHeaderRow() {
+    final headerStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 13);
+    return TableRow(
+      decoration: BoxDecoration(color: Colors.grey.shade200),
+      children: [
+        TableCell(
+          verticalAlignment: TableCellVerticalAlignment.middle,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Text('Ngày', style: headerStyle),
+            ),
+          ),
+        ),
+        ..._allShifts.map((shift) {
+          String shortShift = shift.replaceAll('Ca ', '');
+          return TableCell(
+            verticalAlignment: TableCellVerticalAlignment.middle,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 22.0),
+                child: Text(shortShift, style: headerStyle),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  // Widget con: Dòng cho mỗi ngày (T2, T3, T4...)
+  TableRow _buildDayScheduleRow(String day) {
+    bool? selectAllState = _getSelectAllStateForDay(day);
+
+    return TableRow(
+      children: [
+        // Tên Ngày VÀ Checkbox "chọn tất cả"
+        TableCell(
+          verticalAlignment: TableCellVerticalAlignment.middle,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                day,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Checkbox(
+                value: selectAllState,
+                tristate: true,
+                onChanged: (bool? val) {
+                  _toggleAllShiftsForDay(day, val);
+                },
+                activeColor: Colors.teal,
+              ),
+            ],
+          ),
+        ),
+
+        // 3 ô Checkbox lẻ
+        ..._allShifts.map((shift) {
+          final isSelected = _scheduleMap[day]!.contains(shift);
+          return TableCell(
+            verticalAlignment: TableCellVerticalAlignment.middle,
+            child: Center(
+              child: Checkbox(
+                value: isSelected,
+                onChanged: (bool? val) {
+                  _toggleShift(day, shift, val);
+                },
+                activeColor: Colors.teal,
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  // --- WIDGET CHO TAB 2: NGOẠI LỆ (Giữ nguyên) ---
   Widget _buildExceptionsTab() {
     return Scaffold(
       body: RefreshIndicator(
@@ -264,7 +384,7 @@ class _StaffScheduleDetailScreenState extends State<StaffScheduleDetailScreen>
                   Center(
                     child: Text(
                       'Không có ngoại lệ nào trong 30 ngày tới.',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: TextStyle(color: Colors.grey.shade600),
                     ),
                   ),
                 ],
@@ -284,7 +404,7 @@ class _StaffScheduleDetailScreenState extends State<StaffScheduleDetailScreen>
                     isAbsent ? 'Nghỉ' : 'Làm thêm: ${ex.shift ?? 'N/A'}',
                   ),
                   subtitle: Text(
-                    DateFormat('EEEE, dd/MM/yyyy').format(ex.date),
+                    DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(ex.date),
                   ),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -299,7 +419,8 @@ class _StaffScheduleDetailScreenState extends State<StaffScheduleDetailScreen>
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
         backgroundColor: Colors.teal,
-        child: const Icon(Icons.add, color: Colors.white),
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
       ),
     );
   }

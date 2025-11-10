@@ -1,3 +1,5 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/services/user_service.dart]
+
 import 'package:pocketbase/pocketbase.dart';
 // Import các model mới
 import 'package:myshop/models/staff_profile.dart';
@@ -5,24 +7,17 @@ import 'package:myshop/models/staff_role.dart';
 // Import model 'User' cũ (chỉ dùng cho hàm login)
 import 'package:myshop/models/user.dart';
 
-/// Lớp Service này giờ đây quản lý "Hồ sơ Nhân viên" (staff_profiles)
-/// và các tài khoản "users" liên quan đến hồ sơ đó.
 class UserService {
   final PocketBase pb;
 
   UserService(this.pb);
 
-  /// 1. LẤY (READ)
-  /// Lấy tất cả hồ sơ nhân viên (từ collection 'staff_profiles')
+  /// 1. LẤY (READ) TẤT CẢ
   Future<List<StaffProfile>> getStaffProfiles() async {
     try {
       final records = await pb
           .collection('staff_profiles')
-          .getFullList(
-            sort: 'name',
-            // 'expand' để lấy thông tin 'email' từ bảng 'users'
-            expand: 'user_account',
-          );
+          .getFullList(sort: 'name', expand: 'user_account');
       return records.map((record) => StaffProfile.fromRecord(record)).toList();
     } catch (e) {
       print('UserService - Error fetching staff profiles: $e');
@@ -30,8 +25,25 @@ class UserService {
     }
   }
 
-  /// 7. LẤY (READ) 1 HỒ SƠ
-  /// Lấy hồ sơ nhân viên (staff_profile) dựa trên ID tài khoản (user_id)
+  /// 2. LẤY (READ) 1 HỒ SƠ BẰNG PROFILE_ID
+  /// (Dùng để tải lại chi tiết)
+  Future<StaffProfile> getStaffProfile(String profileId) async {
+    try {
+      final record = await pb
+          .collection('staff_profiles')
+          .getOne(
+            profileId,
+            expand: 'user_account', // Vẫn expand để lấy email
+          );
+      return StaffProfile.fromRecord(record);
+    } catch (e) {
+      print('UserService - Error fetching single staff profile: $e');
+      throw Exception('Không tìm thấy hồ sơ nhân viên.');
+    }
+  }
+
+  /// 3. LẤY (READ) 1 HỒ SƠ BẰNG USER_ID
+  /// (Dùng cho nhân viên xem thông tin của chính mình)
   Future<StaffProfile> getStaffProfileForUser(String userId) async {
     try {
       final record = await pb
@@ -47,7 +59,7 @@ class UserService {
     }
   }
 
-  /// 2. THÊM (CREATE) - (ĐÃ ĐƠN GIẢN HÓA)
+  /// 4. THÊM (CREATE)
   Future<void> addStaffProfile({
     required String name,
     required StaffRole role,
@@ -81,8 +93,9 @@ class UserService {
         'role': role.toJson(),
         'salary': salary,
         'status': 'active',
-        // --- CÁC TRƯỜNG LỊCH ĐÃ BỊ XÓA KHỎI ĐÂY ---
-        // (Chúng ta sẽ gán giá trị default từ PocketBase)
+        // --- SỬA Ở ĐÂY ---
+        // Gán lịch mặc định là một JSON rỗng (CỰC KỲ QUAN TRỌNG)
+        'default_schedule': {},
       };
 
       if (newUserId != null) {
@@ -111,14 +124,10 @@ class UserService {
     }
   }
 
-  /// 3. XÓA (DELETE)
-  /// Xóa hồ sơ nhân viên (và cả tài khoản 'users' liên quan)
+  /// 5. XÓA (DELETE)
   Future<void> deleteStaffProfile(StaffProfile profile) async {
     try {
-      // Xóa hồ sơ 'staff_profiles' trước
       await pb.collection('staff_profiles').delete(profile.id);
-
-      // Nếu hồ sơ này có liên kết tài khoản 'users', xóa luôn tài khoản đó
       if (profile.hasLoginAccount) {
         await pb.collection('users').delete(profile.userId!);
       }
@@ -128,52 +137,38 @@ class UserService {
     }
   }
 
-  /// 4. SỬA (UPDATE) - (Đã nâng cấp)
-  /// Cập nhật thông tin hồ sơ và tài khoản (nếu có)
+  /// 6. SỬA (UPDATE) THÔNG TIN
   Future<void> updateStaffDetails({
-    // Thông tin Profile (Bắt buộc)
     required String profileId,
     required String name,
     required StaffRole role,
     required double salary,
     required String status,
-
-    // Thông tin Account (Tùy chọn)
-    String? userId, // ID của 'users' collection
+    String? userId,
     String? newEmail,
     String? newPassword,
   }) async {
     try {
-      // --- Luôn cập nhật 'staff_profiles' ---
       final profileBody = <String, dynamic>{
         'name': name,
         'role': role.toJson(),
         'salary': salary,
         'status': status,
       };
-      // (Lưu ý: Logic chuyển đổi vai trò (vd: Chef -> Employee)
-      //  rất phức tạp và sẽ cần xử lý riêng, ở đây ta tạm bỏ qua)
       await pb
           .collection('staff_profiles')
           .update(profileId, body: profileBody);
 
-      // --- Chỉ cập nhật 'users' nếu có thông tin ---
       if (userId != null && (newEmail != null || newPassword != null)) {
         final userBody = <String, dynamic>{};
-
-        // Nếu email thay đổi
         if (newEmail != null) {
           userBody['email'] = newEmail;
           userBody['emailVisibility'] = true;
         }
-
-        // Nếu mật khẩu mới được nhập
         if (newPassword != null) {
           userBody['password'] = newPassword;
           userBody['passwordConfirm'] = newPassword;
         }
-
-        // (Với quyền Admin, PocketBase cho phép đổi pass mà ko cần pass cũ)
         await pb.collection('users').update(userId, body: userBody);
       }
     } catch (e) {
@@ -188,8 +183,26 @@ class UserService {
     }
   }
 
-  /// 5. HÀM CŨ (Vẫn cần cho nhân viên tự đổi mật khẩu)
-  /// Cập nhật Mật khẩu cho tài khoản 'users' (dùng ở EditProfileScreen)
+  /// 7. SỬA (UPDATE) LỊCH CỐ ĐỊNH (SỬA LỖI KHÔNG LƯU)
+  Future<void> updateStaffDefaultSchedule({
+    required String profileId,
+    // --- SỬA Ở ĐÂY (Đã xóa workType) ---
+    required Map<String, List<String>> defaultSchedule,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        // --- SỬA Ở ĐÂY (Đã xóa workType) ---
+        'default_schedule': defaultSchedule,
+      };
+
+      await pb.collection('staff_profiles').update(profileId, body: body);
+    } catch (e) {
+      print('UserService - Error updating default schedule: $e');
+      throw Exception('Failed to update default schedule: $e');
+    }
+  }
+
+  /// 8. HÀM CŨ (Vẫn cần)
   Future<void> updateUserPassword({
     required String userId,
     required String oldPassword,
@@ -215,44 +228,20 @@ class UserService {
     }
   }
 
-  /// 6. HÀM CŨ (Vẫn cần cho nhân viên tự đổi tên)
-  /// Cập nhật Tên trong cả 'users' và 'staff_profiles'
+  /// 9. HÀM CŨ (Vẫn cần)
   Future<void> updateUserAndProfileName({
     required String userId,
     required String profileId,
     required String newName,
   }) async {
     try {
-      // Cập nhật 'name' trong 'users' (để login/hiển thị)
       await pb.collection('users').update(userId, body: {'name': newName});
-      // Cập nhật 'name' trong 'staff_profiles' (để quản lý)
       await pb
           .collection('staff_profiles')
           .update(profileId, body: {'name': newName});
     } catch (e) {
       print('UserService - Error updating name: $e');
       throw Exception('Failed to update name: $e');
-    }
-  }
-
-  /// Cập nhật các trường lịch làm việc cố định cho một hồ sơ nhân viên
-  Future<void> updateStaffDefaultSchedule({
-    required String profileId,
-    required String workType,
-    required List<String> defaultDays,
-    required List<String> defaultShifts,
-  }) async {
-    try {
-      final body = <String, dynamic>{
-        'work_type': workType,
-        'default_days': defaultDays,
-        'default_shifts': defaultShifts,
-      };
-
-      await pb.collection('staff_profiles').update(profileId, body: body);
-    } catch (e) {
-      print('UserService - Error updating default schedule: $e');
-      throw Exception('Failed to update default schedule: $e');
     }
   }
 }
