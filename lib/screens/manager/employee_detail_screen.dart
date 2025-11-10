@@ -187,7 +187,12 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
   Widget _buildScheduleCard() {
     // Lọc ra những ngày có ca làm
     final List<Widget> scheduleRows = [];
-    _currentProfile.defaultSchedule.forEach((day, shifts) {
+
+    // Sắp xếp các ngày T2 -> CN
+    const List<String> allDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+    for (var day in allDays) {
+      final shifts = _currentProfile.defaultSchedule[day] ?? [];
       if (shifts.isNotEmpty) {
         scheduleRows.add(
           _InfoRow(
@@ -197,7 +202,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
           ),
         );
       }
-    });
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16.0),

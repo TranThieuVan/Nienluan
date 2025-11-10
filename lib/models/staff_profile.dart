@@ -15,9 +15,7 @@ class StaffProfile {
   final DateTime updated;
   final User? userAccount;
 
-  // --- SỬA Ở ĐÂY (Đã xóa workType) ---
   final Map<String, List<String>> defaultSchedule;
-  // --- KẾT THÚC SỬA ---
 
   StaffProfile({
     required this.id,
@@ -29,7 +27,6 @@ class StaffProfile {
     required this.created,
     required this.updated,
     this.userAccount,
-    // --- SỬA CONSTRUCTOR ---
     this.defaultSchedule = const {},
   });
 
@@ -42,26 +39,22 @@ class StaffProfile {
       }
     }
 
-    // --- LOGIC ĐỌC JSON MỚI ---
-    final scheduleData = record.data['default_schedule'];
+    // --- LOGIC ĐỌC JSON MỚI (ĐÃ SỬA) ---
+    // Đọc từ 'default_schedules' (có S)
+    final scheduleData = record.data['default_schedules'];
     final Map<String, List<String>> schedule = {};
 
-    // Khởi tạo tất cả các ngày
     const List<String> allDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
     for (var day in allDays) {
-      schedule[day] = []; // Mặc định là danh sách rỗng
+      schedule[day] = [];
     }
 
-    // Kiểm tra xem scheduleData có phải là Map không
     if (scheduleData is Map) {
-      // Lặp qua từng entry (ví dụ: 'T2': ['Ca sáng', 'Ca chiều'])
       for (final entry in scheduleData.entries) {
         final key = entry.key as String;
         final value = entry.value;
 
-        // Kiểm tra xem value có phải là List không
         if (value is List) {
-          // Ghi đè lên danh sách rỗng nếu có dữ liệu
           schedule[key] = value.map((item) => item.toString()).toList();
         }
       }
@@ -78,7 +71,6 @@ class StaffProfile {
       created: DateTime.parse(record.created),
       updated: DateTime.parse(record.updated),
       userAccount: expandedUser,
-      // Gán map đã xử lý
       defaultSchedule: schedule,
     );
   }

@@ -151,7 +151,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         if (!isSameDay(_focusedDay, focusedDay)) {
           _focusedDay = focusedDay;
           // Tải lại cả profile và ngoại lệ cho tháng mới
-          _loadScheduleData(focusedDay);
+          setState(() {
+            _loadScheduleFuture = _loadScheduleData(focusedDay);
+          });
         }
       },
       // --- KẾT THÚC SỬA ---

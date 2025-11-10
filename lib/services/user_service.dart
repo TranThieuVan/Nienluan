@@ -26,15 +26,11 @@ class UserService {
   }
 
   /// 2. LẤY (READ) 1 HỒ SƠ BẰNG PROFILE_ID
-  /// (Dùng để tải lại chi tiết)
   Future<StaffProfile> getStaffProfile(String profileId) async {
     try {
       final record = await pb
           .collection('staff_profiles')
-          .getOne(
-            profileId,
-            expand: 'user_account', // Vẫn expand để lấy email
-          );
+          .getOne(profileId, expand: 'user_account');
       return StaffProfile.fromRecord(record);
     } catch (e) {
       print('UserService - Error fetching single staff profile: $e');
@@ -43,14 +39,13 @@ class UserService {
   }
 
   /// 3. LẤY (READ) 1 HỒ SƠ BẰNG USER_ID
-  /// (Dùng cho nhân viên xem thông tin của chính mình)
   Future<StaffProfile> getStaffProfileForUser(String userId) async {
     try {
       final record = await pb
           .collection('staff_profiles')
           .getFirstListItem(
-            'user_account = \'$userId\'', // Tìm hồ sơ liên kết với user_id này
-            expand: 'user_account', // Vẫn expand để lấy email
+            'user_account = \'$userId\'',
+            expand: 'user_account',
           );
       return StaffProfile.fromRecord(record);
     } catch (e) {
@@ -93,9 +88,8 @@ class UserService {
         'role': role.toJson(),
         'salary': salary,
         'status': 'active',
-        // --- SỬA Ở ĐÂY ---
-        // Gán lịch mặc định là một JSON rỗng (CỰC KỲ QUAN TRỌNG)
-        'default_schedule': {},
+        // --- SỬA Ở ĐÂY (thêm S) ---
+        'default_schedules': {},
       };
 
       if (newUserId != null) {
@@ -103,7 +97,6 @@ class UserService {
       }
       await pb.collection('staff_profiles').create(body: profileBody);
     } catch (e) {
-      // ... (Phần rollback lỗi giữ nguyên) ...
       if (newUserId != null) {
         try {
           await pb.collection('users').delete(newUserId);
@@ -186,19 +179,22 @@ class UserService {
   /// 7. SỬA (UPDATE) LỊCH CỐ ĐỊNH (SỬA LỖI KHÔNG LƯU)
   Future<void> updateStaffDefaultSchedule({
     required String profileId,
-    // --- SỬA Ở ĐÂY (Đã xóa workType) ---
     required Map<String, List<String>> defaultSchedule,
   }) async {
     try {
       final body = <String, dynamic>{
-        // --- SỬA Ở ĐÂY (Đã xóa workType) ---
-        'default_schedule': defaultSchedule,
+        // --- SỬA Ở ĐÂY (thêm S) ---
+        'default_schedules': defaultSchedule,
       };
 
+      print('ĐANG LƯU LỊCH: Gửi body: $body TỚI ID: $profileId');
+
       await pb.collection('staff_profiles').update(profileId, body: body);
+
+      print('LƯU LỊCH THÀNH CÔNG!');
     } catch (e) {
-      print('UserService - Error updating default schedule: $e');
-      throw Exception('Failed to update default schedule: $e');
+      print('LỖI KHI LƯU LỊCH: $e');
+      throw Exception('Lỗi khi cập nhật lịch: $e');
     }
   }
 
