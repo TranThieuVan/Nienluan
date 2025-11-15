@@ -1,3 +1,5 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/employee/employee_home.dart]
+
 import 'package:flutter/material.dart';
 import 'package:myshop/services/pocketbase_service.dart';
 import 'package:myshop/screens/auth/login_screen.dart';
@@ -7,9 +9,11 @@ import 'package:myshop/screens/order/order_detail_screen.dart';
 import 'package:myshop/screens/order/existing_order_screen.dart';
 // Import màn hình mới
 import 'package:myshop/screens/order/completed_orders_screen.dart';
-// --- IMPORT WIDGET MỚI ĐƯỢC TẠO ---
+// Import widget
 import 'package:myshop/widgets/table_grid_view.dart';
-import 'package:myshop/screens/employee/employee_profile_screen.dart'; // <-- THÊM IMPORT NÀY
+import 'package:myshop/screens/employee/employee_profile_screen.dart';
+// --- DÒNG IMPORT ĐÚNG ---
+import 'package:pocketbase/pocketbase.dart';
 
 class EmployeeHome extends StatefulWidget {
   const EmployeeHome({super.key});
@@ -28,11 +32,44 @@ class _EmployeeHomeState extends State<EmployeeHome> {
   void initState() {
     super.initState();
     _loadTables();
+    // --- GỌI HÀM ĐĂNG KÝ REALTIME ---
+    _subscribeToTableChanges();
   }
 
-  // Phương thức tải/làm mới danh sách bàn
+  // --- HÀM MỚI: HỦY ĐĂNG KÝ KHI RỜI MÀN HÌNH ---
+  @override
+  void dispose() {
+    _unsubscribeFromTableChanges();
+    super.dispose();
+  }
+
+  // --- HÀM MỚI: ĐĂNG KÝ LẮNG NGHE THAY ĐỔI ---
+  void _subscribeToTableChanges() {
+    print('Đang đăng ký lắng nghe collection "tables"...');
+    pbService.pb.collection('tables').subscribe('*', _handleTableEvent);
+  }
+
+  // --- HÀM MỚI: HỦY ĐĂNG KÝ ---
+  void _unsubscribeFromTableChanges() {
+    print('Đang hủy lắng nghe collection "tables"...');
+    pbService.pb.collection('tables').unsubscribe('*');
+  }
+
+  // =========================================================
+  // --- HÀM MỚI: XỬ LÝ KHI CÓ THAY ĐỔI (ĐÃ SỬA TÊN LỚP) ---
+  void _handleTableEvent(RealtimeCallbackEvent e) {
+    // <--- ĐÂY LÀ DÒNG ĐÃ SỬA
+    print('Sự kiện Realtime: Bàn ${e.record?.id} đã ${e.action}');
+    if (mounted) {
+      // Khi có bất kỳ thay đổi nào (ai đó tạo/sửa/xóa bàn)
+      // Tải lại toàn bộ danh sách bàn
+      _loadTables();
+    }
+  }
+  // =========================================================
+
+  // Phương thức tải/làm mới danh sách bàn (giữ nguyên)
   Future<void> _loadTables() async {
-    // Dùng async để có thể dùng hàm này cho RefreshIndicator
     if (mounted) {
       setState(() {
         _tablesFuture = pbService.getTables();
@@ -55,19 +92,17 @@ class _EmployeeHomeState extends State<EmployeeHome> {
     );
   }
 
-  /// Hàm xử lý khi nhấn vào bàn: Điều hướng đến màn hình tạo hoặc xem hóa đơn.
+  /// Hàm xử lý khi nhấn vào bàn (giữ nguyên)
   void _onTableTapped(TableModel table) async {
     bool? didUpdate;
 
     if (table.isOccupied) {
-      // BÀN ĐỎ (CÓ KHÁCH) -> Mở màn hình Xem/Gọi thêm Hóa đơn
       didUpdate = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (context) => ExistingOrderScreen(table: table),
         ),
       );
     } else {
-      // BÀN XANH (TRỐNG) -> Mở màn hình Tạo Hóa đơn mới
       didUpdate = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (context) => OrderDetailScreen(table: table),
@@ -75,9 +110,9 @@ class _EmployeeHomeState extends State<EmployeeHome> {
       );
     }
 
-    // TỰ ĐỘNG REFRESH nếu có cập nhật trạng thái bàn
     if (didUpdate == true && mounted) {
-      await _loadTables();
+      // (Dòng này không cần thiết nữa vì Realtime đã xử lý)
+      // await _loadTables();
     }
   }
 
@@ -115,12 +150,10 @@ class _EmployeeHomeState extends State<EmployeeHome> {
       body: FutureBuilder<List<TableModel>>(
         future: _tablesFuture,
         builder: (context, snapshot) {
-          // ----- TRẠNG THÁI LOADING -----
+          // ----- (Các trạng thái Loading, Error, Empty giữ nguyên) -----
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-
-          // ----- TRẠNG THÁI LỖI -----
           if (snapshot.hasError) {
             return Center(
               child: Padding(
@@ -153,8 +186,6 @@ class _EmployeeHomeState extends State<EmployeeHome> {
               ),
             );
           }
-
-          // ----- TRẠNG THÁI KHÔNG CÓ DỮ LIỆU -----
           final tables = snapshot.data!;
           if (tables.isEmpty) {
             return RefreshIndicator(
@@ -178,7 +209,6 @@ class _EmployeeHomeState extends State<EmployeeHome> {
           }
 
           // ----- TRẠNG THÁI THÀNH CÔNG (CÓ DỮ LIỆU) -----
-          // SỬ DỤNG WIDGET TableGridView ĐÃ TÁCH
           return TableGridView(
             tables: tables,
             onRefresh: _loadTables,

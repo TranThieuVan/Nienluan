@@ -1,21 +1,22 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/services/pocketbase_service.dart]
+
 import 'package:pocketbase/pocketbase.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
 import 'package:myshop/models/table.dart';
-import 'package:myshop/models/menu_item.dart'; // Vẫn cần cho getOrderItemsWithDetails
+import 'package:myshop/models/menu_item.dart';
 import 'package:myshop/models/order.dart';
 import 'package:myshop/models/order_item_view.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
-import 'notification_service.dart'; // <-- THÊM IMPORT MỚI
-import 'schedule_service.dart'; // <-- THÊM IMPORT MỚI
-import 'package:myshop/services/report_service.dart';
-
+import 'notification_service.dart';
+import 'schedule_service.dart';
 // Import các service con
 import 'user_service.dart';
-import 'menu_service.dart'; // <-- IMPORT SERVICE MỚI
+import 'menu_service.dart';
+import 'report_service.dart';
 // Import các view model
-import 'package:myshop/models/order_view.dart'; // <-- SỬA LẠI IMPORT
+import 'package:myshop/models/order_view.dart';
 
 class PocketBaseService {
   // --- Singleton Pattern ---
@@ -25,10 +26,10 @@ class PocketBaseService {
 
   final PocketBase pb;
   // --- Các service con ---
-  late final UserService users; // Service quản lý người dùng
-  late final MenuService menuItems; // <-- THÊM SERVICE MỚI
-  late final NotificationService notifications; // <-- THÊM DÒNG NÀY
-  late final ScheduleService schedules; // <-- THÊM DÒNG NÀY
+  late final UserService users;
+  late final MenuService menuItems;
+  late final NotificationService notifications;
+  late final ScheduleService schedules;
   late final ReportService reports;
 
   PocketBaseService._internal()
@@ -36,10 +37,10 @@ class PocketBaseService {
     : pb = PocketBase(dotenv.env['POCKETBASE_URL'] ?? 'http://127.0.0.1:8091') {
     // Khởi tạo service con, truyền instance `pb` hiện có
     users = UserService(pb);
-    menuItems = MenuService(pb); // <-- KHỞI TẠO SERVICE MỚI
-    notifications = NotificationService(pb); // <-- KHỞI TẠO NÓ
-    schedules = ScheduleService(pb); // <-- KHỞI TẠO NÓ
-    reports = ReportService(pb); // <--- 3. THÊM DÒNG NÀY
+    menuItems = MenuService(pb);
+    notifications = NotificationService(pb);
+    schedules = ScheduleService(pb);
+    reports = ReportService(pb);
   }
   // --- Hết phần Singleton ---
 
@@ -63,26 +64,15 @@ class PocketBaseService {
   // --- Chức Năng Quản Lý Bàn ---
   Future<List<TableModel>> getTables() async {
     try {
-      // 1. Lấy danh sách từ PocketBase
-      // (Không cần sort ở đây nữa, vì chúng ta sẽ sort bằng Dart)
       final records = await pb.collection('tables').getFullList();
-
-      // 2. Chuyển đổi (map) thành List<TableModel>
       final tables = records
           .map((record) => TableModel.fromRecord(record))
           .toList();
-
-      // 3. Sắp xếp (sort) lại danh sách bằng logic của Dart
       tables.sort((a, b) {
-        // Lấy số từ tên của bàn a và b bằng hàm helper
         final numA = _extractTableNumber(a.name);
         final numB = _extractTableNumber(b.name);
-
-        // So sánh 2 số đó
         return numA.compareTo(numB);
       });
-
-      // 4. Trả về danh sách đã được sắp xếp
       return tables;
     } catch (e) {
       print('Error fetching tables: $e');
@@ -101,10 +91,6 @@ class PocketBaseService {
     }
   }
 
-  // --- Chức Năng Quản Lý Menu ---
-  //
-  // *** HÀM getMenu() ĐÃ BỊ XÓA KHỎI ĐÂY (ĐÃ CHUYỂN QUA MenuService) ***
-  //
   // --- Chức Năng Tạo Hóa Đơn Mới ---
   Future<String> createOrderRecord(String tableId, double totalPrice) async {
     try {
@@ -125,11 +111,13 @@ class PocketBaseService {
     }
   }
 
+  // --- SỬA HÀM NÀY (THÊM notes) ---
   Future<void> createOrderItemRecord({
     required String orderId,
     required String menuItemId,
     required int quantity,
     required double price,
+    String? notes, // <-- Tham số mới
   }) async {
     try {
       await pb
@@ -140,6 +128,7 @@ class PocketBaseService {
               'menu_item': menuItemId,
               'quantity': quantity,
               'price': price,
+              'notes': notes, // <-- Gửi notes lên
             },
           );
     } catch (e) {
@@ -167,6 +156,7 @@ class PocketBaseService {
     }
   }
 
+  // --- SỬA HÀM NÀY (ĐỌC notes) ---
   /// 2. Lấy tất cả các món (order_items) của một hóa đơn
   Future<List<OrderItemView>> getOrderItemsWithDetails(String orderId) async {
     try {
@@ -175,6 +165,9 @@ class PocketBaseService {
           .getFullList(filter: 'order = "$orderId"', expand: 'menu_item');
 
       return records.map((record) {
+        // Đọc trường notes
+        final notes = record.getStringValue('notes');
+
         final expandedData = record.get<List<RecordModel>>('expand.menu_item');
 
         if (expandedData.isEmpty) {
@@ -192,7 +185,6 @@ class PocketBaseService {
             'description': '',
           });
 
-          // Vẫn cần `pb` instance để gọi `MenuItemModel.fromRecord`
           final deletedMenuItem = MenuItemModel.fromRecord(fakeRecord, pb);
 
           return OrderItemView(
@@ -200,6 +192,7 @@ class PocketBaseService {
             quantity: record.getIntValue('quantity'),
             price: record.getDoubleValue('price'),
             menuItem: deletedMenuItem,
+            notes: notes, // <-- Gán notes
           );
         }
 
@@ -211,6 +204,7 @@ class PocketBaseService {
           quantity: record.getIntValue('quantity'),
           price: record.getDoubleValue('price'),
           menuItem: menuItem,
+          notes: notes, // <-- Gán notes
         );
       }).toList();
     } catch (e) {
@@ -231,8 +225,6 @@ class PocketBaseService {
     }
   }
 
-  // --- HÀM CHO "GỌI THÊM" ---
-
   /// 4. Cập nhật tổng tiền cho một hóa đơn đã tồn tại
   Future<void> updateOrderTotalPrice(
     String orderId,
@@ -248,16 +240,11 @@ class PocketBaseService {
     }
   }
 
-  // [Bên trong lớp PocketBaseService]
-
-  /// (Hàm helper) Thoát các giá trị chuỗi để dùng trong filter
-  /// Nó thay thế dấu ' thành ''
   String _escapeFilterValue(String value) {
     return value.replaceAll("'", "''");
   }
 
   /// Lấy danh sách các hóa đơn đã hoàn thành ('paid')
-  /// có thể lọc theo ngày VÀ/HOẶC từ khóa tìm kiếm (ID)
   Future<List<OrderViewModel>> getCompletedOrders({
     DateTime? selectedDate,
     String? searchTerm,
@@ -265,19 +252,17 @@ class PocketBaseService {
     try {
       final now = DateTime.now();
 
-      // --- PHẦN SỬA LỖI LỌC NGÀY ---
       DateTime startDateTimeLocal;
       DateTime endDateTimeLocal;
 
       if (selectedDate != null) {
-        // Lọc theo 1 ngày: Lấy từ 00:00:00 đến 23:59:59 của ngày đó (giờ ĐỊA PHƯƠNG)
         startDateTimeLocal = DateTime(
           selectedDate.year,
           selectedDate.month,
           selectedDate.day,
           0,
           0,
-          0, // 00:00:00
+          0,
         );
         endDateTimeLocal = DateTime(
           selectedDate.year,
@@ -285,10 +270,9 @@ class PocketBaseService {
           selectedDate.day,
           23,
           59,
-          59, // 23:59:59
+          59,
         );
       } else {
-        // Mặc định (30 ngày): Lấy từ 00:00:00 của 30 ngày trước
         final thirtyDaysAgo = now.subtract(const Duration(days: 30));
         startDateTimeLocal = DateTime(
           thirtyDaysAgo.year,
@@ -298,42 +282,34 @@ class PocketBaseService {
           0,
           0,
         );
-        // Đến 23:59:59 của ngày hôm nay
         endDateTimeLocal = DateTime(now.year, now.month, now.day, 23, 59, 59);
       }
 
-      // Chuyển đổi sang chuỗi UTC mà PocketBase có thể hiểu
       final startFilter = startDateTimeLocal.toUtc().toIso8601String();
       final endFilter = endDateTimeLocal.toUtc().toIso8601String();
-      // --- KẾT THÚC PHẦN SỬA LỖI ---
 
-      // --- Xây dựng Filter động (BẰNG TAY) ---
       List<String> filters = [
         'status = "paid"',
-        // Dùng dấu nháy đơn ' và giá trị UTC đã chuẩn hóa
         'created >= \'$startFilter\'',
         'created <= \'$endFilter\'',
       ];
 
-      // Thêm điều kiện tìm kiếm (nếu có)
       if (searchTerm != null && searchTerm.isNotEmpty) {
         final escapedTerm = _escapeFilterValue(searchTerm);
         filters.add('id ~ \'$escapedTerm\'');
       }
 
       final filterString = filters.join(' && ');
-      // --- Kết thúc xây dựng Filter ---
 
       final records = await pb
           .collection('orders')
           .getFullList(
-            filter: filterString, // Gửi chuỗi filter đã build
+            filter: filterString,
             sort: '-created',
             expand: 'table,created_by',
           );
 
       return records.map((record) {
-        // ... (logic map của bạn giữ nguyên)
         RecordModel? tableRecord;
         final tableExpand = record.get<List<RecordModel>>('expand.table');
         if (tableExpand.isNotEmpty) {
@@ -355,13 +331,10 @@ class PocketBaseService {
   }
 
   int _extractTableNumber(String name) {
-    // Dùng RegExp để tìm tất cả các chữ số trong tên
     final match = RegExp(r'\d+').firstMatch(name);
     if (match != null) {
-      // Nếu tìm thấy số, chuyển nó thành int
       return int.tryParse(match.group(0)!) ?? 0;
     }
-    // Nếu không tìm thấy số (ví dụ: "Bàn VIP"), trả về 0 hoặc một số lớn
     return 0;
   }
-} // End of PocketBaseService
+}

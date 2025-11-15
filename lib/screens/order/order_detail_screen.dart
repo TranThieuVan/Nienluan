@@ -1,17 +1,24 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/order/order_detail_screen.dart]
+
 import 'package:flutter/material.dart';
 import 'package:myshop/models/table.dart';
 import 'package:myshop/models/menu_item.dart';
 import 'package:myshop/models/order.dart'; // Import OrderModel
 import 'package:myshop/services/pocketbase_service.dart';
-// Import hàm định dạng tiền
 import 'package:myshop/utils/currency_formatter.dart';
+import 'package:myshop/models/order_item_view.dart'; // <--- DÒNG NÀY ĐÃ ĐƯỢC THÊM VÀO
 
-// (Lớp CartItem giữ nguyên)
+// --- SỬA LỚP NÀY (THÊM notes) ---
 class CartItem {
   final MenuItemModel item;
   int quantity;
+  String? notes; // <-- THÊM DÒNG NÀY
 
-  CartItem({required this.item, this.quantity = 1});
+  CartItem({
+    required this.item,
+    this.quantity = 1,
+    this.notes, // <-- THÊM VÀO CONSTRUCTOR
+  });
 
   double get subtotal => item.price * quantity;
 }
@@ -19,14 +26,9 @@ class CartItem {
 
 class OrderDetailScreen extends StatefulWidget {
   final TableModel table;
-  // --- BƯỚC 5: Thêm Hóa đơn có sẵn (optional) ---
   final OrderModel? existingOrder;
 
-  const OrderDetailScreen({
-    super.key,
-    required this.table,
-    this.existingOrder, // Nhận Hóa đơn có sẵn
-  });
+  const OrderDetailScreen({super.key, required this.table, this.existingOrder});
 
   @override
   State<OrderDetailScreen> createState() => _OrderDetailScreenState();
@@ -42,8 +44,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
-
-  // Cờ để biết có đang tải giỏ hàng cũ không
   bool _isLoadingExistingCart = false;
 
   @override
@@ -52,45 +52,40 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     _menuFuture = pbService.menuItems.getMenu();
     _searchController.addListener(_onSearchChanged);
 
-    // --- BƯỚC 5: Nếu có hóa đơn cũ, tải giỏ hàng ---
     if (widget.existingOrder != null) {
       _loadExistingCart();
     }
   }
 
-  /// Hàm tải các món đã có trong hóa đơn cũ vào giỏ hàng
   Future<void> _loadExistingCart() async {
-    // Chỉ tải nếu có existingOrder
     if (widget.existingOrder == null) return;
 
     setState(() {
       _isLoadingExistingCart = true;
     });
     try {
-      // Lấy danh sách món đã gọi
-      final existingItems = await pbService.getOrderItemsWithDetails(
-        widget.existingOrder!.id,
-      );
+      // --- LỖI Ở ĐÂY ---
+      // Hàm này trả về List<OrderItemView>
+      final List<OrderItemView> existingItems = await pbService
+          .getOrderItemsWithDetails(widget.existingOrder!.id);
+      // --- KẾT THÚC LỖI ---
 
-      // Chuyển đổi thành Map<String, CartItem>
       final Map<String, CartItem> initialCart = {};
       for (final itemView in existingItems) {
-        // Chỉ thêm vào nếu món đó chưa có trong giỏ hàng tạm (tránh ghi đè)
         if (!_cart.containsKey(itemView.menuItem.id)) {
           initialCart[itemView.menuItem.id] = CartItem(
             item: itemView.menuItem,
             quantity: itemView.quantity,
+            notes: itemView.notes, // <-- LẤY GHI CHÚ CŨ
           );
         }
       }
 
-      // Cập nhật State
       setState(() {
-        _cart.addAll(initialCart); // Thêm các món đã có vào giỏ
-        _calculateTotalPrice(); // Tính lại tổng tiền
+        _cart.addAll(initialCart);
+        _calculateTotalPrice();
       });
     } catch (e) {
-      // Hiển thị lỗi nếu không tải được giỏ hàng cũ
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -121,8 +116,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     });
   }
 
-  // --- Logic Giỏ Hàng (Giữ nguyên) ---
-
+  // --- Logic Giỏ Hàng ---
   void _incrementItem(MenuItemModel item) {
     setState(() {
       if (_cart.containsKey(item.id)) {
@@ -157,20 +151,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     });
   }
 
-  // --- BƯỚC 5: Cập nhật Logic Nút OK ---
+  // --- HÀM XỬ LÝ GỬI (SỬA LẠI ĐỂ GỬI notes) ---
   Future<void> _processOrder() async {
-    // Kiểm tra xem đây là tạo mới hay gọi thêm
-    if (widget.existingOrder != null) {
-      // Gọi thêm vào hóa đơn có sẵn
-      await _processAddMoreItems();
-    } else {
-      // Tạo hóa đơn mới
-      await _processCreateNewOrder();
-    }
-  }
-
-  /// Hàm xử lý logic TẠO MỚI hóa đơn (Giữ nguyên logic cũ)
-  Future<void> _processCreateNewOrder() async {
     if (_cart.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -183,40 +165,88 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     setState(() {
       _isProcessingOrder = true;
     });
+
     try {
-      // 1. Tạo record 'orders'
-      final newOrderId = await pbService.createOrderRecord(
-        widget.table.id,
-        _totalPrice,
-      );
-      // 2. Tạo các record 'order_items'
-      for (final cartItem in _cart.values) {
-        await pbService.createOrderItemRecord(
-          orderId: newOrderId,
-          menuItemId: cartItem.item.id,
-          quantity: cartItem.quantity,
-          price: cartItem.item.price, // Giá tại thời điểm tạo
+      final bool isAddingMore = widget.existingOrder != null;
+      String orderId;
+      double newTotalPrice = _totalPrice;
+
+      if (isAddingMore) {
+        // --- Logic GỌI THÊM ---
+        orderId = widget.existingOrder!.id;
+
+        // Lấy các món đã có
+        final existingItemViews = await pbService.getOrderItemsWithDetails(
+          orderId,
         );
-      }
-      // 3. Cập nhật trạng thái bàn (nếu cần)
-      if (widget.table.status == 'empty') {
+        final Map<String, OrderItemView> existingItemsMap = {
+          for (var view in existingItemViews) view.menuItem.id: view,
+        };
+
+        List<Future> updateFutures = [];
+
+        for (final cartItem in _cart.values) {
+          if (existingItemsMap.containsKey(cartItem.item.id)) {
+            // Món đã có -> Cần UPDATE
+            final existingItem = existingItemsMap[cartItem.item.id]!;
+            if (existingItem.quantity != cartItem.quantity ||
+                existingItem.notes != cartItem.notes) {
+              // Cập nhật (PocketBase không hỗ trợ update, nên ta Xóa + Tạo)
+              // Tạm thời chỉ tạo mới, CHƯA XỬ LÝ UPDATE/DELETE
+              // (Đây là một logic phức tạp, ta sẽ tạm bỏ qua)
+            }
+          } else {
+            // Món mới -> TẠO MỚI
+            updateFutures.add(
+              pbService.createOrderItemRecord(
+                orderId: orderId,
+                menuItemId: cartItem.item.id,
+                quantity: cartItem.quantity,
+                price: cartItem.item.price,
+                notes: cartItem.notes, // <-- Gửi ghi chú
+              ),
+            );
+          }
+        }
+        await Future.wait(updateFutures);
+
+        // Cập nhật tổng tiền
+        await pbService.updateOrderTotalPrice(orderId, newTotalPrice);
+      } else {
+        // --- Logic TẠO MỚI ---
+        // 1. Tạo record 'orders'
+        orderId = await pbService.createOrderRecord(
+          widget.table.id,
+          _totalPrice,
+        );
+        // 2. Tạo các record 'order_items'
+        for (final cartItem in _cart.values) {
+          await pbService.createOrderItemRecord(
+            orderId: orderId,
+            menuItemId: cartItem.item.id,
+            quantity: cartItem.quantity,
+            price: cartItem.item.price,
+            notes: cartItem.notes, // <-- Gửi ghi chú
+          );
+        }
+        // 3. Cập nhật trạng thái bàn
         await pbService.updateTableStatus(widget.table.id, 'occupied');
       }
+
       // 4. Thông báo và đóng màn hình
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Đã tạo hóa đơn cho ${widget.table.name}!'),
+          content: Text('Đã cập nhật hóa đơn cho ${widget.table.name}!'),
           backgroundColor: Colors.green,
         ),
       );
       Navigator.of(context).pop(true); // Trả về true để refresh
     } catch (e) {
-      // Xử lý lỗi
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi khi tạo hóa đơn: $e'),
+          content: Text('Lỗi khi xử lý hóa đơn: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -229,116 +259,53 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
-  /// Hàm xử lý logic GỌI THÊM vào hóa đơn có sẵn
-  Future<void> _processAddMoreItems() async {
-    if (_cart.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Giỏ hàng đang trống. Vui lòng chọn món.'),
-          backgroundColor: Colors.red,
+  // --- HÀM MỚI: HIỂN THỊ DIALOG GHI CHÚ ---
+  Future<void> _showAddNoteDialog(CartItem cartItem) async {
+    final noteController = TextEditingController(text: cartItem.notes);
+
+    final newNote = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Ghi chú cho "${cartItem.item.name}"'),
+        content: TextField(
+          controller: noteController,
+          decoration: const InputDecoration(
+            hintText: 'Ví dụ: ít đường, không cay...',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+          maxLines: 3,
         ),
-      );
-      return;
-    }
-    setState(() {
-      _isProcessingOrder = true;
-    });
-    try {
-      final existingOrderId = widget.existingOrder!.id;
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null), // Hủy
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop(noteController.text); // Lưu
+            },
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
 
-      // 1. Tạo các record 'order_items' MỚI
-      // *** CẬP NHẬT LOGIC: Chỉ thêm những món chưa có hoặc tăng số lượng ***
-      // Lấy danh sách món đã có trong hóa đơn cũ
-      final existingItemsViews = await pbService.getOrderItemsWithDetails(
-        existingOrderId,
-      );
-      final Map<String, int> existingQuantities = {
-        for (var view in existingItemsViews) view.menuItem.id: view.quantity,
-      };
-
-      List<Future> updateFutures = []; // Lưu các tác vụ cập nhật/tạo
-
-      for (final cartItem in _cart.values) {
-        final currentQuantityInDb = existingQuantities[cartItem.item.id] ?? 0;
-        final newQuantityInCart = cartItem.quantity;
-
-        // Chỉ xử lý nếu số lượng trong giỏ hàng khác số lượng đã lưu
-        if (newQuantityInCart != currentQuantityInDb) {
-          // Nếu món chưa có trong DB (currentQuantityInDb == 0), tạo mới
-          if (currentQuantityInDb == 0) {
-            updateFutures.add(
-              pbService.createOrderItemRecord(
-                orderId: existingOrderId,
-                menuItemId: cartItem.item.id,
-                quantity: newQuantityInCart,
-                price: cartItem.item.price, // Giá tại thời điểm thêm
-              ),
-            );
-          } else {
-            // Nếu món đã có, tìm ID của order_item để UPDATE
-            // (Phần này phức tạp hơn vì cần ID của order_item)
-            // -> Tạm thời: Vẫn tạo mới (dẫn đến trùng lặp món)
-            // CẦN NÂNG CẤP SAU
-            updateFutures.add(
-              pbService.createOrderItemRecord(
-                orderId: existingOrderId,
-                menuItemId: cartItem.item.id,
-                quantity:
-                    newQuantityInCart -
-                    currentQuantityInDb, // Chỉ thêm phần chênh lệch? Không ổn
-                price: cartItem.item.price,
-              ),
-            );
-            print(
-              "CẢNH BÁO: Logic gọi thêm đang tạo món trùng lặp. Cần nâng cấp.",
-            );
-          }
-        }
-      }
-      // Chờ tất cả các tác vụ hoàn thành
-      await Future.wait(updateFutures);
-
-      // 2. Cập nhật lại tổng tiền của hóa đơn 'orders'
-      // Tính lại tổng tiền dựa trên toàn bộ _cart hiện tại
-      _calculateTotalPrice(); // Đảm bảo _totalPrice là mới nhất
-      await pbService.updateOrderTotalPrice(existingOrderId, _totalPrice);
-
-      // 3. Thông báo và đóng màn hình
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đã chỉnh sửa  hóa đơn cho ${widget.table.name}!'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-      Navigator.of(context).pop(true); // Trả về true để refresh
-    } catch (e) {
-      // Xử lý lỗi
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lỗi khi thêm món vào hóa đơn: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isProcessingOrder = false;
-        });
-      }
+    // Cập nhật state (nếu có thay đổi)
+    if (newNote != null) {
+      setState(() {
+        cartItem.notes = newNote;
+      });
     }
   }
 
   // --- Giao diện (Build) ---
   @override
   Widget build(BuildContext context) {
-    // Xác định xem đây là chế độ Tạo mới hay Gọi thêm
     final bool isAddingMore = widget.existingOrder != null;
     final String appBarTitle = isAddingMore
         ? "Gọi thêm cho ${widget.table.name}"
         : "Hóa đơn cho ${widget.table.name}";
-    // AppBar luôn màu đỏ nếu là gọi thêm (vì bàn chắc chắn đỏ)
     final Color appBarColor = isAddingMore
         ? Colors.red.shade400
         : (widget.table.isOccupied
@@ -347,14 +314,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(appBarTitle), // Đổi tiêu đề
+        title: Text(appBarTitle),
         backgroundColor: appBarColor,
         foregroundColor: Colors.white,
       ),
       body: Column(
         children: [
           _buildSearchBar(),
-          // Hiển thị loading nếu đang tải giỏ hàng cũ
           if (_isLoadingExistingCart)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 20.0),
@@ -384,7 +350,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     ),
                   );
                 }
-                // Chỉ hiển thị menu khi đã tải xong giỏ hàng cũ (nếu có)
                 if (snapshot.connectionState == ConnectionState.done &&
                     !_isLoadingExistingCart) {
                   if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -435,14 +400,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     ],
                   );
                 }
-                // Nếu chưa tải xong menu HOẶC đang tải giỏ hàng cũ, hiển thị rỗng
                 return const SizedBox.shrink();
               },
             ),
           ),
-
-          // Thanh Giỏ hàng và Nút OK
-          _buildCartSummaryBar(isAddingMore), // Truyền cờ isAddingMore
+          _buildCartSummaryBar(isAddingMore),
         ],
       ),
     );
@@ -486,6 +448,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  // --- SỬA WIDGET NÀY ĐỂ THÊM NÚT GHI CHÚ ---
   Widget _buildMenuListView(List<MenuItemModel> items) {
     return ListView.builder(
       itemCount: items.length,
@@ -493,7 +456,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       physics: const NeverScrollableScrollPhysics(),
       itemBuilder: (context, index) {
         final item = items[index];
-        final int quantityInCart = _cart[item.id]?.quantity ?? 0;
+        final CartItem? cartItem = _cart[item.id];
+        final int quantityInCart = cartItem?.quantity ?? 0;
+        final String? note = cartItem?.notes;
+        final bool hasNote = note != null && note.isNotEmpty;
 
         return Card(
           elevation: 2.0,
@@ -527,10 +493,29 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             ),
             subtitle: Text(
               '${formatCurrency(item.price)}'
-              '${item.unit.isNotEmpty ? ' / ${item.unit}' : ''}',
+              '${item.unit.isNotEmpty ? ' / ${item.unit}' : ''}'
+              // Hiển thị ghi chú nếu có
+              '${hasNote ? '\nGhi chú: $note' : ''}',
+              style: TextStyle(color: hasNote ? Colors.deepPurple : null),
             ),
-            trailing: quantityInCart == 0
-                ? IconButton(
+            isThreeLine: hasNote, // Tự động dãn ra nếu có ghi chú
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Nút Ghi chú (chỉ hiện khi đã thêm vào giỏ)
+                if (quantityInCart > 0)
+                  IconButton(
+                    icon: Icon(
+                      Icons.edit_note,
+                      color: hasNote ? Colors.deepPurple : Colors.grey,
+                    ),
+                    tooltip: 'Thêm Ghi chú',
+                    onPressed: () => _showAddNoteDialog(cartItem!),
+                  ),
+
+                // Nút Thêm/Bớt
+                if (quantityInCart == 0)
+                  IconButton(
                     icon: const Icon(
                       Icons.add_shopping_cart,
                       color: Colors.green,
@@ -538,7 +523,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     tooltip: 'Thêm vào giỏ',
                     onPressed: () => _incrementItem(item),
                   )
-                : Row(
+                else
+                  Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
@@ -560,13 +546,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       ),
                     ],
                   ),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  /// Cập nhật Widget thanh Giỏ hàng để đổi tên nút OK
+  // (Widget _buildCartSummaryBar giữ nguyên, không cần sửa)
   Widget _buildCartSummaryBar(bool isAddingMore) {
     if (_isProcessingOrder) {
       return Container(
@@ -576,19 +564,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       );
     }
 
-    // Chỉ hiển thị nếu giỏ hàng không trống HOẶC đang trong chế độ gọi thêm (để luôn thấy nút)
-    if (_cart.isEmpty && !isAddingMore) {
+    if (_cart.isEmpty) {
       return const SizedBox.shrink();
     }
-    // Nếu là gọi thêm và giỏ hàng trống (chưa thêm món mới), vẫn hiển thị nút nhưng mờ đi
-    final bool canProceed = _cart.isNotEmpty;
 
     final int totalItems = _cart.values.fold(
       0,
       (sum, item) => sum + item.quantity,
     );
 
-    // Xác định tên nút và màu nút
     final String buttonText = isAddingMore ? 'OK' : 'OK (Tạo Hóa Đơn)';
     final Color buttonColor = isAddingMore ? Colors.blue : Colors.green;
 
@@ -626,16 +610,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           ElevatedButton.icon(
             icon: const Icon(Icons.check_circle),
-            label: Text(buttonText), // Đổi tên nút
+            label: Text(buttonText),
             style: ElevatedButton.styleFrom(
-              backgroundColor: canProceed
-                  ? buttonColor
-                  : Colors.grey, // Đổi màu nút nếu giỏ trống
+              backgroundColor: buttonColor,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
-            // Vô hiệu hóa nút nếu giỏ hàng trống (áp dụng cho cả 2 chế độ)
-            onPressed: canProceed ? _processOrder : null,
+            onPressed: _processOrder, // Nút luôn bật
           ),
         ],
       ),

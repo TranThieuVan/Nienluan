@@ -1,10 +1,11 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/order/existing_order_screen.dart]
+
 import 'package:flutter/material.dart';
 import 'package:myshop/models/table.dart';
 import 'package:myshop/models/order.dart';
 import 'package:myshop/models/order_item_view.dart';
 import 'package:myshop/services/pocketbase_service.dart';
 import 'package:myshop/utils/currency_formatter.dart';
-// *** BƯỚC 5: Import OrderDetailScreen ***
 import 'order_detail_screen.dart';
 import 'checkout_screen.dart';
 
@@ -32,9 +33,7 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
     _orderDataFuture = _loadOrderData();
   }
 
-  /// Hàm tải thông tin hóa đơn và các món đã gọi
   Future<bool> _loadOrderData() async {
-    // Tạm thời set loading để tránh lỗi null
     setState(() {
       _order = null;
       _items = [];
@@ -50,7 +49,6 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
       for (var item in items) {
         total += item.subtotal;
       }
-      // Cập nhật state sau khi đã có dữ liệu
       if (mounted) {
         setState(() {
           _order = order;
@@ -65,40 +63,26 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
     }
   }
 
-  /// *** BƯỚC 5: Cập nhật Logic cho nút "Gọi thêm" ***
   void _onOrderMore() async {
-    // Đảm bảo _order đã được tải
     if (_order == null) return;
 
-    // 1. Điều hướng đến `OrderDetailScreen`
-    //    Truyền `widget.table` VÀ `_order` (existingOrder)
     final bool? didUpdate = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (context) => OrderDetailScreen(
-          table: widget.table,
-          existingOrder: _order, // Quan trọng: Truyền hóa đơn hiện tại
-        ),
+        builder: (context) =>
+            OrderDetailScreen(table: widget.table, existingOrder: _order),
       ),
     );
 
-    // 2. Nếu `OrderDetailScreen` trả về true (đã thêm món thành công)
-    //    thì tải lại dữ liệu hóa đơn hiện tại để cập nhật danh sách món
     if (didUpdate == true && mounted) {
-      // Gọi lại hàm load data để cập nhật _items và _totalPrice
       setState(() {
-        // Đặt lại future để FutureBuilder chạy lại
         _orderDataFuture = _loadOrderData();
       });
     }
   }
 
-  // [Trong file: lib/screens/order/existing_order_screen.dart]
-
-  /// Logic cho nút "Thanh toán" (Điều hướng đến màn hình full)
   void _onCheckout() async {
     if (_order == null) return;
 
-    // 1. Điều hướng đến màn hình Hóa đơn & QR Code
     final bool? didConfirmPayment = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (context) => CheckoutScreen(
@@ -109,12 +93,8 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
       ),
     );
 
-    // 2. Nếu người dùng bấm "Thoát" (trả về false hoặc null), không làm gì cả.
     if (didConfirmPayment != true) return;
 
-    // 3. Nếu người dùng bấm "Xác nhận Đã Thanh toán" (trả về true):
-
-    // --- BẮT ĐẦU XỬ LÝ CHECKOUT ---
     setState(() {
       _isProcessingCheckout = true;
     });
@@ -128,7 +108,7 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      Navigator.of(context).pop(true); // Trả về true để refresh EmployeeHome
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -151,13 +131,12 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Chi tiết Bàn ${widget.table.name}"),
-        backgroundColor: Colors.red.shade400, // Bàn đỏ
+        backgroundColor: Colors.red.shade400,
         foregroundColor: Colors.white,
       ),
       body: FutureBuilder<bool>(
         future: _orderDataFuture,
         builder: (context, snapshot) {
-          // Trạng thái Đang tải...
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: Column(
@@ -171,14 +150,11 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
             );
           }
 
-          // Trạng thái Lỗi
           if (snapshot.hasError || _order == null) {
-            // Thêm kiểm tra _order null
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
-                  // Thêm Column để hiển thị nút thử lại
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(
@@ -195,7 +171,7 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
                     const SizedBox(height: 20),
                     ElevatedButton(
                       onPressed: () => setState(() {
-                        _orderDataFuture = _loadOrderData(); // Gọi lại future
+                        _orderDataFuture = _loadOrderData();
                       }),
                       child: const Text('Thử lại'),
                     ),
@@ -208,7 +184,6 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
           // Trạng thái Thành công (Hiển thị dữ liệu)
           return Column(
             children: [
-              // Phần 1: Tiêu đề và Tổng tiền
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
@@ -234,23 +209,21 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
               ),
               const Divider(height: 1),
 
-              // Phần 2: Danh sách các món đã gọi
+              // --- SỬA PHẦN NÀY (HIỂN THỊ GHI CHÚ) ---
               Expanded(
                 child: _items.isEmpty
-                    ? const Center(
-                        child: Text("Chưa có món nào được gọi."),
-                      ) // Xử lý trường hợp không có item
+                    ? const Center(child: Text("Chưa có món nào được gọi."))
                     : ListView.builder(
                         itemCount: _items.length,
                         itemBuilder: (context, index) {
                           final item = _items[index];
+                          final bool hasNote =
+                              item.notes != null && item.notes!.isNotEmpty;
+
                           return ListTile(
                             leading:
                                 (item.menuItem.imageUrl != null &&
-                                    item
-                                        .menuItem
-                                        .imageUrl!
-                                        .isNotEmpty) // Kiểm tra imageUrl không rỗng
+                                    item.menuItem.imageUrl!.isNotEmpty)
                                 ? Image.network(
                                     item.menuItem.imageUrl!,
                                     width: 50,
@@ -277,8 +250,15 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
                               ),
                             ),
                             subtitle: Text(
-                              '${item.quantity} x ${formatCurrency(item.price)}',
+                              '${item.quantity} x ${formatCurrency(item.price)}'
+                              // Hiển thị ghi chú nếu có
+                              '${hasNote ? '\nGhi chú: ${item.notes}' : ''}',
+                              style: TextStyle(
+                                color: hasNote ? Colors.deepPurple : null,
+                              ),
                             ),
+                            // Tự động dãn ra
+                            isThreeLine: hasNote,
                             trailing: Text(
                               formatCurrency(item.subtotal),
                               style: const TextStyle(
@@ -291,7 +271,6 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
                       ),
               ),
 
-              // Phần 3: Các nút hành động
               if (_isProcessingCheckout)
                 const Padding(
                   padding: EdgeInsets.all(24.0),
@@ -306,7 +285,6 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
     );
   }
 
-  // Widget: Các nút hành động "Gọi thêm" và "Thanh toán"
   Widget _buildActionButtons() {
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -324,14 +302,14 @@ class _ExistingOrderScreenState extends State<ExistingOrderScreen> {
         children: [
           Expanded(
             child: ElevatedButton.icon(
-              icon: const Icon(Icons.add_shopping_cart),
-              label: const Text('Chỉnh sửa'),
+              icon: const Icon(Icons.edit_note), // <-- Đổi icon
+              label: const Text('Gọi thêm/Sửa'), // <-- Đổi text
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
               ),
-              onPressed: _onOrderMore, // ĐÃ SỬA: Gọi hàm điều hướng
+              onPressed: _onOrderMore,
             ),
           ),
           const SizedBox(width: 10),
