@@ -33,8 +33,9 @@ class MenuItemModel {
     String? imageUrl;
     final imageFilename = record.getStringValue('image');
     if (imageFilename.isNotEmpty) {
+      // --- SỬA LỖI Ở ĐÂY: Tải ảnh 400x400 cho nét hơn ---
       imageUrl = pb
-          .getFileUrl(record, imageFilename, thumb: '100x100')
+          .getFileUrl(record, imageFilename, thumb: '400x400')
           .toString();
     }
 
@@ -54,11 +55,9 @@ class MenuItemModel {
     );
   }
 
-  // --- SỬA LỖI: THÊM LẠI GETTER NÀY ---
   String get displayCategory {
     return category == MenuItemCategory.food ? 'Món ăn' : 'Thức uống';
   }
-  // --- KẾT THÚC SỬA LỖI ---
 
   double get profit => price - cost;
 }

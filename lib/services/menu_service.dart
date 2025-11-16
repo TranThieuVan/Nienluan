@@ -10,7 +10,7 @@ class MenuService {
 
   MenuService(this.pb);
 
-  /// 1. LẤY (READ)
+  /// 1. LẤY (READ) TẤT CẢ
   Future<List<MenuItemModel>> getMenu() async {
     try {
       final records = await pb
@@ -25,7 +25,19 @@ class MenuService {
     }
   }
 
-  /// 2. THÊM (CREATE) - (ĐÃ SỬA)
+  // --- HÀM MỚI (ĐỂ TẢI LẠI GIÁ VỐN) ---
+  /// 2. LẤY (READ) MỘT MÓN
+  Future<MenuItemModel> getMenuItem(String id) async {
+    try {
+      final record = await pb.collection('menu_items').getOne(id);
+      return MenuItemModel.fromRecord(record, pb);
+    } catch (e) {
+      print('MenuService - getMenuItem Error: $e');
+      throw Exception('Failed to load menu item: $e');
+    }
+  }
+
+  /// 3. THÊM (CREATE) - (ĐÃ SỬA)
   Future<void> createMenuItem({
     required String name,
     required double price,
@@ -65,7 +77,7 @@ class MenuService {
     }
   }
 
-  /// 3. SỬA (UPDATE) - (ĐÃ SỬA)
+  /// 4. SỬA (UPDATE) - (ĐÃ SỬA)
   Future<void> updateMenuItem({
     required String id,
     required String name,
@@ -112,7 +124,7 @@ class MenuService {
     }
   }
 
-  /// 4. XÓA (DELETE)
+  /// 5. XÓA (DELETE)
   Future<void> deleteMenuItem(String id) async {
     try {
       await pb.collection('menu_items').delete(id);

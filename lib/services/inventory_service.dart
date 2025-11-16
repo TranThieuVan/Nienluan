@@ -1,4 +1,4 @@
-// [TẠO FILE MỚI: lib/services/inventory_service.dart]
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/services/inventory_service.dart]
 
 import 'package:pocketbase/pocketbase.dart';
 import 'package:myshop/models/ingredient.dart';
@@ -11,7 +11,6 @@ class InventoryService {
 
   // --- 1. QUẢN LÝ NGUYÊN VẬT LIỆU ---
 
-  /// Lấy tất cả nguyên vật liệu
   Future<List<Ingredient>> getIngredients() async {
     try {
       final records = await pb
@@ -24,7 +23,6 @@ class InventoryService {
     }
   }
 
-  /// Thêm nguyên vật liệu mới
   Future<void> createIngredient({
     required String name,
     required String unit,
@@ -48,7 +46,6 @@ class InventoryService {
     }
   }
 
-  /// Cập nhật nguyên vật liệu
   Future<void> updateIngredient({
     required String id,
     required String name,
@@ -74,7 +71,6 @@ class InventoryService {
     }
   }
 
-  /// Xóa nguyên vật liệu
   Future<void> deleteIngredient(String id) async {
     try {
       await pb.collection('ingredients').delete(id);
@@ -84,9 +80,8 @@ class InventoryService {
     }
   }
 
-  // --- 2. QUẢN LÝ CÔNG THỨC (Sẽ dùng ở Giai đoạn 2) ---
+  // --- 2. QUẢN LÝ CÔNG THỨC ---
 
-  /// Lấy công thức (các nguyên liệu) của 1 món ăn
   Future<List<MenuItemIngredient>> getIngredientsForMenuItem(
     String menuItemId,
   ) async {
@@ -95,7 +90,7 @@ class InventoryService {
           .collection('menu_item_ingredients')
           .getFullList(
             filter: 'menu_item = "$menuItemId"',
-            expand: 'ingredient', // Rất quan trọng
+            expand: 'ingredient',
           );
       return records.map((r) => MenuItemIngredient.fromRecord(r)).toList();
     } catch (e) {
@@ -104,5 +99,37 @@ class InventoryService {
     }
   }
 
-  // (Chúng ta sẽ thêm các hàm add/remove/update công thức sau)
+  // --- HÀM MỚI ---
+  /// Thêm một nguyên liệu vào công thức
+  Future<void> createMenuItemIngredient({
+    required String menuItemId,
+    required String ingredientId,
+    required double quantityNeeded,
+  }) async {
+    try {
+      await pb
+          .collection('menu_item_ingredients')
+          .create(
+            body: {
+              'menu_item': menuItemId,
+              'ingredient': ingredientId,
+              'quantity_needed': quantityNeeded,
+            },
+          );
+    } catch (e) {
+      print('InventoryService - createMenuItemIngredient Error: $e');
+      throw Exception('Lỗi thêm vào công thức: $e');
+    }
+  }
+
+  // --- HÀM MỚI ---
+  /// Xóa một nguyên liệu khỏi công thức
+  Future<void> deleteMenuItemIngredient(String recipeItemId) async {
+    try {
+      await pb.collection('menu_item_ingredients').delete(recipeItemId);
+    } catch (e) {
+      print('InventoryService - deleteMenuItemIngredient Error: $e');
+      throw Exception('Lỗi xóa khỏi công thức: $e');
+    }
+  }
 }

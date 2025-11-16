@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:myshop/models/menu_item.dart';
 import 'package:myshop/services/pocketbase_service.dart';
+import 'package:myshop/screens/manager/recipe_management_screen.dart';
+import 'package:myshop/utils/currency_formatter.dart'; // <--- SỬA LỖI 1
 
 class MenuItemFormScreen extends StatefulWidget {
   final MenuItemModel? menuItem;
@@ -23,16 +25,20 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
 
   // Controllers
   late TextEditingController _nameController;
-  late TextEditingController _priceController;
+  late TextEditingController
+  _priceController; // Vẫn dùng để nhập giá trong Dialog
   late TextEditingController _unitController;
   late TextEditingController _descriptionController;
-  late TextEditingController _costController; // <-- Controller cho Giá vốn
 
   // State
   MenuItemCategory _selectedCategory = MenuItemCategory.food;
   bool _inStock = true;
   XFile? _selectedImage;
   String? _existingImageUrl;
+
+  // Sửa thành state để UI cập nhật
+  late double _currentPrice;
+  late double _currentCost;
 
   bool get _isEditing => widget.menuItem != null;
 
@@ -46,9 +52,10 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
     );
     _unitController = TextEditingController(text: item?.unit);
     _descriptionController = TextEditingController(text: item?.description);
-    _costController = TextEditingController(
-      text: item?.cost.toString() ?? '0',
-    ); // <-- Khởi tạo
+
+    _currentPrice = item?.price ?? 0.0;
+    _currentCost = item?.cost ?? 0.0;
+
     _selectedCategory = item?.category ?? MenuItemCategory.food;
     _inStock = item?.inStock ?? true;
     _existingImageUrl = item?.imageUrl;
@@ -60,7 +67,6 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
     _priceController.dispose();
     _unitController.dispose();
     _descriptionController.dispose();
-    _costController.dispose(); // <-- Dispose
     super.dispose();
   }
 
@@ -84,11 +90,10 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
 
     try {
       final name = _nameController.text;
-      final price = double.tryParse(_priceController.text) ?? 0.0;
+      final price = _currentPrice; // Lấy từ state
       final unit = _unitController.text;
       final description = _descriptionController.text;
-      final cost =
-          double.tryParse(_costController.text) ?? 0.0; // <-- Lấy giá vốn
+      final cost = _currentCost; // Lấy từ state
       final category = _selectedCategory == MenuItemCategory.food
           ? 'food'
           : 'drink';
@@ -98,7 +103,6 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
           : null;
 
       if (_isEditing) {
-        // --- SỬA LỖI Ở ĐÂY ---
         await pbService.menu.updateMenuItem(
           id: widget.menuItem!.id,
           name: name,
@@ -108,12 +112,10 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
           unit: unit,
           description: description,
           image: imageFile,
-          // Sửa tên tham số 'currentImageFilename'
           currentImageFilename: widget.menuItem!.image,
-          cost: cost, // <-- Truyền giá vốn
+          cost: cost,
         );
       } else {
-        // --- SỬA LỖI Ở ĐÂY ---
         await pbService.menu.createMenuItem(
           name: name,
           price: price,
@@ -122,7 +124,7 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
           unit: unit,
           description: description,
           image: imageFile,
-          cost: cost, // <-- Truyền giá vốn
+          cost: cost,
         );
       }
 
@@ -145,6 +147,77 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  // --- HÀM MỚI: SỬA GIÁ BÁN ---
+  Future<void> _showEditPriceDialog() async {
+    _priceController.text = _currentPrice.toStringAsFixed(
+      0,
+    ); // Cập nhật controller
+
+    final newPriceString = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cập nhật Giá bán'),
+        content: TextField(
+          controller: _priceController,
+          decoration: const InputDecoration(
+            labelText: 'Giá bán (VND)',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop(_priceController.text);
+            },
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+
+    if (newPriceString != null) {
+      setState(() {
+        _currentPrice = double.tryParse(newPriceString) ?? _currentPrice;
+      });
+    }
+  }
+
+  // --- HÀM MỚI: ĐI TỚI MÀN HÌNH CÔNG THỨC ---
+  void _manageRecipe() async {
+    if (!_isEditing) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng lưu món ăn trước khi thêm công thức.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) =>
+            RecipeManagementScreen(menuItem: widget.menuItem!),
+      ),
+    );
+
+    try {
+      final updatedItem = await pbService.menu.getMenuItem(widget.menuItem!.id);
+      setState(() {
+        _currentCost = updatedItem.cost;
+      });
+    } catch (e) {
+      print('Lỗi tải lại giá vốn: $e');
     }
   }
 
@@ -177,49 +250,33 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
               },
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _priceController,
-                    decoration: const InputDecoration(
-                      labelText: 'Giá bán (VND)',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator: (value) {
-                      if (value == null ||
-                          value.isEmpty ||
-                          double.tryParse(value) == null) {
-                        return 'Vui lòng nhập giá hợp lệ';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextFormField(
-                    controller: _costController, // <-- THÊM TRƯỜNG GIÁ VỐN
-                    decoration: const InputDecoration(
-                      labelText: 'Giá vốn (VND)',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator: (value) {
-                      if (value == null ||
-                          value.isEmpty ||
-                          double.tryParse(value) == null) {
-                        return 'Vui lòng nhập giá hợp lệ';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-              ],
+
+            // --- SỬA LỖI 2: THAY GIÁ BÁN TEXTFIELD BẰNG LISTTILE ---
+            ListTile(
+              title: const Text('Giá bán'),
+              subtitle: Text(formatCurrency(_currentPrice)),
+              trailing: const Icon(Icons.edit, color: Colors.blue),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: Colors.grey.shade400),
+              ),
+              onTap: _showEditPriceDialog,
             ),
+
+            const SizedBox(height: 16),
+
+            // --- NÚT QUẢN LÝ CÔNG THỨC ---
+            ListTile(
+              title: const Text('Giá vốn (tự động)'),
+              subtitle: Text(formatCurrency(_currentCost)), // <-- SỬA LỖI 1
+              trailing: const Icon(Icons.chevron_right),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: Colors.grey.shade400),
+              ),
+              onTap: _manageRecipe,
+            ),
+
             const SizedBox(height: 16),
             TextFormField(
               controller: _unitController,
@@ -298,16 +355,18 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
     );
   }
 
+  // --- SỬA LỖI 3: SỬA GIAO DIỆN HÌNH ẢNH ---
   Widget _buildImagePicker() {
     return Center(
       child: Column(
         children: [
+          // Bỏ Container cố định chiều cao
           Container(
-            width: 150,
-            height: 150,
+            width: double.infinity, // Full width
             decoration: BoxDecoration(
               border: Border.all(color: Colors.grey),
               borderRadius: BorderRadius.circular(8),
+              color: Colors.grey.shade100,
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -326,20 +385,31 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
 
   Widget _buildImage() {
     if (_selectedImage != null) {
-      return Image.file(File(_selectedImage!.path), fit: BoxFit.cover);
+      return Image.file(
+        File(_selectedImage!.path),
+        fit: BoxFit.fitWidth, // <-- Sửa: Không cắt ảnh
+        width: double.infinity,
+      );
     }
     if (_existingImageUrl != null) {
       return Image.network(
         _existingImageUrl!,
-        fit: BoxFit.cover,
+        fit: BoxFit.fitWidth, // <-- Sửa: Không cắt ảnh
+        width: double.infinity,
         errorBuilder: (context, error, stackTrace) =>
-            const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+            const Icon(Icons.broken_image, size: 100, color: Colors.grey),
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
-          return const Center(child: CircularProgressIndicator());
+          return const SizedBox(
+            height: 200, // Giữ chiều cao tạm thời khi loading
+            child: Center(child: CircularProgressIndicator()),
+          );
         },
       );
     }
-    return const Icon(Icons.no_photography, size: 50, color: Colors.grey);
+    return const SizedBox(
+      height: 150, // Chiều cao mặc định khi chưa có ảnh
+      child: Icon(Icons.no_photography, size: 50, color: Colors.grey),
+    );
   }
 }
