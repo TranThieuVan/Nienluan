@@ -1,4 +1,4 @@
-// [TẠO FILE MỚI: lib/screens/manager/recipe_management_screen.dart]
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/recipe_management_screen.dart]
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,26 +18,35 @@ class RecipeManagementScreen extends StatefulWidget {
 
 class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
   final pbService = PocketBaseService.instance;
+
   late Future<List<MenuItemIngredient>> _recipeFuture;
-  List<Ingredient> _allIngredients = []; // Cache
+  late Future<List<Ingredient>> _allIngredientsFuture;
+
+  List<Ingredient> _allIngredientsCache = [];
   double _totalCost = 0.0;
+  bool _isSavingCost = false;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadAllIngredients();
+    _loadRecipe();
   }
 
-  Future<void> _loadData() async {
-    // Tải song song công thức của món VÀ tất cả nguyên liệu trong kho
+  Future<void> _loadAllIngredients() async {
+    _allIngredientsFuture = pbService.inventory.getIngredients();
+    try {
+      _allIngredientsCache = await _allIngredientsFuture;
+    } catch (_) {
+      // ignore, snack handled elsewhere if needed
+    }
+  }
+
+  Future<void> _loadRecipe() async {
     setState(() {
-      _recipeFuture =
-          Future.wait([
-            pbService.inventory.getIngredientsForMenuItem(widget.menuItem.id),
-            pbService.inventory.getIngredients(),
-          ]).then((results) {
-            final recipeItems = results[0] as List<MenuItemIngredient>;
-            _allIngredients = results[1] as List<Ingredient>;
+      _recipeFuture = pbService.inventory
+          .getIngredientsForMenuItem(widget.menuItem.id)
+          .then((recipeItems) {
             _calculateTotalCost(recipeItems);
             return recipeItems;
           });
@@ -45,17 +54,13 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
   }
 
   void _calculateTotalCost(List<MenuItemIngredient> recipeItems) {
-    double total = 0.0;
-    for (var item in recipeItems) {
-      total += item.cost;
-    }
-    setState(() {
-      _totalCost = total;
-    });
+    final total = recipeItems.fold<double>(0.0, (sum, i) => sum + i.cost);
+    setState(() => _totalCost = total);
   }
 
-  // Cập nhật giá vốn (cost) mới vào collection 'menu_items'
   Future<void> _updateMenuItemCost() async {
+    setState(() => _isSavingCost = true);
+
     try {
       await pbService.menu.updateMenuItem(
         id: widget.menuItem.id,
@@ -68,12 +73,13 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
         unit: widget.menuItem.unit,
         description: widget.menuItem.description,
         currentImageFilename: widget.menuItem.image,
-        cost: _totalCost, // Cập nhật giá vốn mới
+        cost: _totalCost,
       );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đã cập nhật tổng giá vốn cho món ăn!'),
+            content: Text('Đã cập nhật tổng giá vốn!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -87,15 +93,38 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSavingCost = false);
     }
   }
 
   Future<void> _addIngredient() async {
-    // Hiển thị Dialog chọn nguyên liệu
+    final recipeItems = await _recipeFuture;
+
+    // Không cho thêm trùng nguyên liệu
+    final usedIds = recipeItems.map((e) => e.ingredient.id).toSet();
+    final availableIngredients = _allIngredientsCache
+        .where((ing) => !usedIds.contains(ing.id))
+        .toList();
+
+    if (availableIngredients.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tất cả nguyên liệu đã được thêm!'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) =>
-          _AddIngredientDialog(allIngredients: _allIngredients),
+      builder: (context) => _IngredientDialog(
+        title: "Thêm Nguyên liệu",
+        allIngredients: availableIngredients,
+      ),
     );
 
     if (result != null) {
@@ -105,7 +134,7 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
           ingredientId: result['ingredient'].id,
           quantityNeeded: result['quantity'],
         );
-        _loadData(); // Tải lại công thức
+        _loadRecipe();
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -119,10 +148,63 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
     }
   }
 
+  Future<void> _editIngredient(MenuItemIngredient item) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _IngredientDialog(
+        title: "Sửa số lượng",
+        ingredientFixed: item.ingredient,
+        initialQty: item.quantityNeeded,
+      ),
+    );
+
+    if (result != null) {
+      try {
+        // Gọi đúng service của bạn
+        await pbService.inventory.updateMenuItemIngredient(
+          recipeItemId: item.id,
+          quantityNeeded: result['quantity'],
+        );
+        _loadRecipe();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi chỉnh sửa: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _deleteIngredient(String recipeItemId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: const Text(
+          'Bạn có chắc chắn muốn xóa nguyên liệu này khỏi công thức?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
     try {
       await pbService.inventory.deleteMenuItemIngredient(recipeItemId);
-      _loadData(); // Tải lại công thức
+      _loadRecipe();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -135,6 +217,8 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
     }
   }
 
+  // ------------------------- UI ------------------------------
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -144,9 +228,14 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.save),
-            tooltip: 'Lưu tổng giá vốn',
-            onPressed: _updateMenuItemCost, // <-- Nút lưu giá vốn
+            icon: _isSavingCost
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(color: Colors.white),
+                  )
+                : const Icon(Icons.save),
+            onPressed: _isSavingCost ? null : _updateMenuItemCost,
           ),
         ],
       ),
@@ -156,61 +245,152 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+
           if (snapshot.hasError) {
-            return Center(child: Text('Lỗi: ${snapshot.error}'));
+            return Center(
+              child: Text(
+                'Lỗi tải công thức: ${snapshot.error}',
+                style: const TextStyle(color: Colors.red),
+                textAlign: TextAlign.center,
+              ),
+            );
           }
+
           final recipeItems = snapshot.data ?? [];
 
           return Column(
             children: [
               Expanded(
-                child: recipeItems.isEmpty
-                    ? const Center(child: Text('Chưa có nguyên liệu nào.'))
-                    : ListView.builder(
-                        itemCount: recipeItems.length,
-                        itemBuilder: (context, index) {
-                          final item = recipeItems[index];
-                          return ListTile(
-                            leading: CircleAvatar(
-                              child: Text(item.ingredient.unit),
-                            ),
-                            title: Text(item.ingredient.name),
-                            subtitle: Text(
-                              'Số lượng: ${item.quantityNeeded} ${item.ingredient.unit}',
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                color: Colors.red,
-                              ),
-                              onPressed: () => _deleteIngredient(item.id),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              // Thanh tổng kết ở dưới cùng
-              BottomAppBar(
-                color: Colors.white,
-                elevation: 10,
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Tổng Giá Vốn:',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        formatCurrency(_totalCost),
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.deepPurple,
-                          fontWeight: FontWeight.bold,
+                  padding: const EdgeInsets.only(
+                    bottom: 96.0,
+                  ), // chừa chỗ cho FAB
+                  child: recipeItems.isEmpty
+                      ? const Center(child: Text('Chưa có nguyên liệu nào.'))
+                      : ListView.separated(
+                          itemCount: recipeItems.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            color: Colors.grey.shade300,
+                            indent: 16,
+                            endIndent: 16,
+                          ),
+                          itemBuilder: (context, index) {
+                            final item = recipeItems[index];
+
+                            return Dismissible(
+                              key: ValueKey(item.id),
+                              direction: DismissDirection.endToStart,
+                              background: Container(
+                                color: Colors.red,
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                ),
+                                child: const Icon(
+                                  Icons.delete,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              confirmDismiss: (direction) async {
+                                // show confirm dialog, then delete via _deleteIngredient
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Xác nhận xóa'),
+                                    content: Text(
+                                      'Bạn muốn xóa ${item.ingredient.name} khỏi công thức?',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.of(context).pop(false),
+                                        child: const Text('Hủy'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.of(context).pop(true),
+                                        child: const Text(
+                                          'Xóa',
+                                          style: TextStyle(color: Colors.red),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirmed == true) {
+                                  await _deleteIngredient(item.id);
+                                }
+                                return false; // return false để không auto remove widget (we reload list ourselves)
+                              },
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: Colors.orange.shade100,
+                                  child: Text(
+                                    item.ingredient.unit,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ),
+                                title: Text(
+                                  item.ingredient.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${item.quantityNeeded} ${item.ingredient.unit}',
+                                  style: TextStyle(color: Colors.grey.shade700),
+                                ),
+                                onTap: () => _editIngredient(item),
+                                trailing: IconButton(
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    color: Colors.lightBlueAccent,
+                                  ),
+                                  onPressed: () => _editIngredient(item),
+                                ),
+                              ),
+                            );
+                          },
                         ),
+                ),
+              ),
+
+              // Tổng giá vốn
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 6,
+                      offset: const Offset(0, -2),
+                      color: Colors.grey.withOpacity(0.12),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Tổng giá vốn:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
-                    ],
-                  ),
+                    ),
+                    Text(
+                      formatCurrency(_totalCost),
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.deepPurple.shade600,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -227,19 +407,40 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
   }
 }
 
-// --- DIALOG CHỌN NGUYÊN VẬT LIỆU ---
-class _AddIngredientDialog extends StatefulWidget {
-  final List<Ingredient> allIngredients;
-  const _AddIngredientDialog({required this.allIngredients});
+// --------------------------------------------------------------
+//  DIALOG THÊM / SỬA NGUYÊN LIỆU
+// --------------------------------------------------------------
+
+class _IngredientDialog extends StatefulWidget {
+  final String title;
+  final List<Ingredient>? allIngredients; // null = edit mode
+  final Ingredient? ingredientFixed; // edit mode
+  final double? initialQty;
+
+  const _IngredientDialog({
+    required this.title,
+    this.allIngredients,
+    this.ingredientFixed,
+    this.initialQty,
+  });
 
   @override
-  State<_AddIngredientDialog> createState() => _AddIngredientDialogState();
+  State<_IngredientDialog> createState() => _IngredientDialogState();
 }
 
-class _AddIngredientDialogState extends State<_AddIngredientDialog> {
+class _IngredientDialogState extends State<_IngredientDialog> {
   final _formKey = GlobalKey<FormState>();
   final _quantityController = TextEditingController();
   Ingredient? _selectedIngredient;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIngredient = widget.ingredientFixed;
+    if (widget.initialQty != null) {
+      _quantityController.text = widget.initialQty.toString();
+    }
+  }
 
   @override
   void dispose() {
@@ -249,38 +450,79 @@ class _AddIngredientDialogState extends State<_AddIngredientDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final available = widget.allIngredients ?? [];
+
+    // If in add mode but no available ingredients - show simple message
+    if (widget.allIngredients != null && available.isEmpty) {
+      return AlertDialog(
+        title: const Text('Không có nguyên liệu'),
+        content: const Text('Không còn nguyên liệu khả dụng để thêm.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Đóng'),
+          ),
+        ],
+      );
+    }
+
     return AlertDialog(
-      title: const Text('Thêm Nguyên liệu'),
+      title: Text(widget.title),
       content: Form(
         key: _formKey,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DropdownButtonFormField<Ingredient>(
-              value: _selectedIngredient,
-              decoration: const InputDecoration(labelText: 'Chọn Nguyên liệu'),
-              items: widget.allIngredients.map((ing) {
-                return DropdownMenuItem(
-                  value: ing,
-                  child: Text('${ing.name} (${ing.unit})'),
-                );
-              }).toList(),
-              onChanged: (val) {
-                setState(() {
-                  _selectedIngredient = val;
-                });
-              },
-              validator: (val) => val == null ? 'Vui lòng chọn' : null,
-            ),
+            if (widget.allIngredients != null)
+              DropdownButtonFormField<Ingredient>(
+                value: _selectedIngredient,
+                decoration: const InputDecoration(
+                  labelText: 'Chọn Nguyên liệu',
+                ),
+                items: available
+                    .map(
+                      (ing) => DropdownMenuItem(
+                        value: ing,
+                        child: Text('${ing.name} (${ing.unit})'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (val) => setState(() => _selectedIngredient = val),
+                validator: (val) =>
+                    val == null ? 'Vui lòng chọn nguyên liệu' : null,
+              )
+            else
+              // show fixed ingredient name when editing
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.ingredientFixed?.name ?? '',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.ingredientFixed?.unit ?? '',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+
             TextFormField(
               controller: _quantityController,
               decoration: InputDecoration(
                 labelText:
-                    'Số lượng cần dùng (${_selectedIngredient?.unit ?? '...'})',
+                    'Số lượng (${_selectedIngredient?.unit ?? widget.ingredientFixed?.unit ?? '...'})',
               ),
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d*')),
               ],
               validator: (val) {
                 if (val == null || val.isEmpty) return 'Không được trống';
@@ -300,12 +542,12 @@ class _AddIngredientDialogState extends State<_AddIngredientDialog> {
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               Navigator.of(context).pop({
-                'ingredient': _selectedIngredient,
+                'ingredient': _selectedIngredient ?? widget.ingredientFixed,
                 'quantity': double.parse(_quantityController.text),
               });
             }
           },
-          child: const Text('Thêm'),
+          child: const Text('Xong'),
         ),
       ],
     );

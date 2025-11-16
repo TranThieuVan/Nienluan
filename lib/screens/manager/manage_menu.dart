@@ -26,8 +26,7 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
   Future<void> _loadMenu() async {
     if (mounted) {
       setState(() {
-        // --- SỬA LỖI Ở ĐÂY ---
-        _menuFuture = pbService.menu.getMenu(); // Đổi từ menuItems -> menu
+        _menuFuture = pbService.menu.getMenu(); // sửa đúng
       });
     }
   }
@@ -38,6 +37,7 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
         builder: (context) => MenuItemFormScreen(menuItem: item),
       ),
     );
+
     if (result == true && mounted) {
       _loadMenu();
     }
@@ -65,16 +65,15 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
 
     if (confirm == true && mounted) {
       try {
-        // --- SỬA LỖI Ở ĐÂY ---
-        await pbService.menu.deleteMenuItem(
-          item.id,
-        ); // Đổi từ menuItems -> menu
+        await pbService.menu.deleteMenuItem(item.id);
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Đã xóa món "${item.name}"'),
+            content: Text('Đã xóa "${item.name}"'),
             backgroundColor: Colors.green,
           ),
         );
+
         _loadMenu();
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -95,6 +94,14 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
         backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
       ),
+
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _navigateToForm(),
+        backgroundColor: Colors.orange,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
+      ),
+
       body: FutureBuilder<List<MenuItemModel>>(
         future: _menuFuture,
         builder: (context, snapshot) {
@@ -104,14 +111,16 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
           if (snapshot.hasError) {
             return Center(child: Text('Lỗi: ${snapshot.error}'));
           }
+
           final items = snapshot.data ?? [];
           if (items.isEmpty) {
-            return const Center(child: Text('Chưa có món nào trong thực đơn.'));
+            return const Center(child: Text('Chưa có món nào.'));
           }
 
           final foodItems = items
               .where((item) => item.category == MenuItemCategory.food)
               .toList();
+
           final drinkItems = items
               .where((item) => item.category == MenuItemCategory.drink)
               .toList();
@@ -119,6 +128,9 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
           return RefreshIndicator(
             onRefresh: _loadMenu,
             child: ListView(
+              padding: const EdgeInsets.only(
+                bottom: 120,
+              ), // ⭐⭐ CỰC QUAN TRỌNG — tránh FAB che item cuối
               children: [
                 _buildCategorySection(
                   'Món ăn (${foodItems.length})',
@@ -132,12 +144,6 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
             ),
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _navigateToForm(),
-        backgroundColor: Colors.orange,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
       ),
     );
   }
@@ -153,42 +159,120 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
         ),
+
         ListView.builder(
           itemCount: items.length,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemBuilder: (context, index) {
             final item = items[index];
-            return ListTile(
-              leading: (item.imageUrl != null)
-                  ? Image.network(
-                      item.imageUrl!,
-                      width: 50,
-                      height: 50,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.broken_image, size: 50),
-                    )
-                  : const SizedBox(
-                      width: 50,
-                      height: 50,
-                      child: Icon(Icons.fastfood, color: Colors.grey),
+
+            return Column(
+              children: [
+                Dismissible(
+                  key: Key(item.id),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    color: Colors.red,
+                    child: const Icon(
+                      Icons.delete,
+                      color: Colors.white,
+                      size: 28,
                     ),
-              title: Text(item.name),
-              subtitle: Text(formatCurrency(item.price)),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.blue),
-                    onPressed: () => _navigateToForm(item: item),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () => _deleteItem(item),
+                  confirmDismiss: (dir) async {
+                    final bool? confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text("Xác nhận Xóa"),
+                        content: Text('Bạn có chắc muốn xóa "${item.name}"?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text("Hủy"),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text(
+                              "Xóa",
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirm == true) {
+                      await _deleteItem(item);
+                    }
+                    return false;
+                  },
+
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: (item.imageUrl != null)
+                          ? Image.network(
+                              item.imageUrl!,
+                              width: 55,
+                              height: 55,
+                              fit: BoxFit.cover,
+                              errorBuilder: (c, e, s) =>
+                                  const Icon(Icons.broken_image, size: 50),
+                            )
+                          : Container(
+                              width: 55,
+                              height: 55,
+                              color: Colors.grey.shade200,
+                              child: const Icon(
+                                Icons.fastfood,
+                                color: Colors.grey,
+                              ),
+                            ),
+                    ),
+
+                    title: Text(
+                      item.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4.0),
+                      child: Text(
+                        formatCurrency(item.price),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+
+                    trailing: IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.blue),
+                      onPressed: () => _navigateToForm(item: item),
+                    ),
                   ),
-                ],
-              ),
+                ),
+
+                Padding(
+                  padding: const EdgeInsets.only(left: 85),
+                  child: Divider(
+                    height: 1,
+                    thickness: 0.7,
+                    color: Colors.grey.shade300,
+                  ),
+                ),
+              ],
             );
           },
         ),

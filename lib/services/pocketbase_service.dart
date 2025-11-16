@@ -12,7 +12,7 @@ import 'package:http/http.dart' as http;
 import 'notification_service.dart';
 import 'schedule_service.dart';
 // Import các service con
-import 'auth_service.dart'; // (Import này đã có)
+import 'auth_service.dart';
 import 'user_service.dart';
 import 'menu_service.dart';
 import 'report_service.dart';
@@ -40,7 +40,7 @@ class PocketBaseService {
     // Lấy URL từ .env, fallback về localhost
     : pb = PocketBase(dotenv.env['POCKETBASE_URL'] ?? 'http://127.0.0.1:8091') {
     // Khởi tạo service con
-    auth = AuthService(pb); // (Giờ dòng này đã đúng)
+    auth = AuthService(pb);
     users = UserService(pb);
     menu = MenuService(pb);
     notifications = NotificationService(pb);
@@ -50,21 +50,18 @@ class PocketBaseService {
   }
   // --- Hết phần Singleton ---
 
-  // --- Chức Năng Xác Thực (Chuyển qua AuthService) ---
-  // --- SỬA LỖI 1: SỬA Future<void> -> Future<bool> ---
+  // --- Chức Năng Xác Thực ---
   Future<bool> login(String email, String password) async {
     return auth.login(email, password);
   }
 
   String getRole() {
-    return auth.getRole(); // (Giờ dòng này đã đúng)
+    return auth.getRole();
   }
 
   void logout() {
     auth.logout();
   }
-
-  // (Phần còn lại của file giữ nguyên)
 
   // --- Chức Năng Quản Lý Bàn ---
   Future<List<TableModel>> getTables() async {
@@ -213,10 +210,22 @@ class PocketBaseService {
     }
   }
 
+  // --- SỬA HÀM NÀY (TẠM THỜI VÔ HIỆU HÓA TRỪ KHO) ---
   Future<void> checkoutOrder(String orderId, String tableId) async {
     try {
+      // 1. Đánh dấu đơn hàng là "paid"
       await pb.collection('orders').update(orderId, body: {'status': 'paid'});
+
+      // 2. Chuyển bàn về "trống"
       await pb.collection('tables').update(tableId, body: {'status': 'empty'});
+
+      // 3. (MỚI) Tự động trừ kho
+      // Lấy danh sách các món trong đơn hàng vừa thanh toán
+      // final itemsInOrder = await getOrderItemsWithDetails(orderId);
+
+      // --- SỬA LỖI: TẠM THỜI ẨN DÒNG NÀY ĐI ---
+      // inventory.deductStockForOrder(itemsInOrder);
+      // --- KẾT THÚC SỬA LỖI ---
     } catch (e) {
       print('Error during checkout: $e');
       throw Exception('Failed to process checkout: $e');
@@ -247,18 +256,13 @@ class PocketBaseService {
   }) async {
     try {
       final now = DateTime.now();
-
       DateTime startDateTimeLocal;
       DateTime endDateTimeLocal;
-
       if (selectedDate != null) {
         startDateTimeLocal = DateTime(
           selectedDate.year,
           selectedDate.month,
           selectedDate.day,
-          0,
-          0,
-          0,
         );
         endDateTimeLocal = DateTime(
           selectedDate.year,
@@ -274,13 +278,9 @@ class PocketBaseService {
           thirtyDaysAgo.year,
           thirtyDaysAgo.month,
           thirtyDaysAgo.day,
-          0,
-          0,
-          0,
         );
         endDateTimeLocal = DateTime(now.year, now.month, now.day, 23, 59, 59);
       }
-
       final startFilter = startDateTimeLocal.toUtc().toIso8601String();
       final endFilter = endDateTimeLocal.toUtc().toIso8601String();
 

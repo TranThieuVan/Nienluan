@@ -5,7 +5,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:myshop/models/order.dart';
 import 'package:myshop/models/staff_profile.dart';
-import 'package:myshop/models/best_seller_item.dart'; // <-- THÊM MODEL MỚI
+import 'package:myshop/models/best_seller_item.dart';
+import 'package:myshop/models/menu_item.dart'; // <--- DÒNG SỬA LỖI ĐÂY RỒI
 import 'package:myshop/services/pocketbase_service.dart';
 import 'package:myshop/utils/currency_formatter.dart';
 import 'salary_detail_screen.dart';
@@ -14,7 +15,10 @@ import 'salary_detail_screen.dart';
 class DailyRevenue {
   final DateTime date;
   final double total;
-  DailyRevenue({required this.date, required this.total});
+  final double cost; // <-- Thêm giá vốn
+  double get profit => total - cost; // <-- Thêm lợi nhuận
+
+  DailyRevenue({required this.date, required this.total, required this.cost});
 }
 
 // Kiểu trả về của Future (gộp 3 danh sách)
@@ -35,8 +39,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final pbService = PocketBaseService.instance;
 
   DateTime _selectedMonth = DateTime.now();
-
-  // Future để tải cả 3 loại dữ liệu
   late Future<ReportData> _reportDataFuture;
 
   @override
@@ -45,32 +47,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
     _loadReportData();
   }
 
-  // Hàm gọi service (đã sửa)
   void _loadReportData() {
     if (mounted) {
       setState(() {
         _reportDataFuture =
             Future.wait([
-              // 1. Lấy Doanh thu theo tháng
               pbService.reports.getCompletedOrdersForMonth(_selectedMonth),
-              // 2. Lấy Lương
               pbService.users.getStaffProfiles(),
-
-              // 3. LẤY MÓN BÁN CHẠY (MỚI)
               pbService.reports.getBestSellingItems(_selectedMonth),
             ]).then((results) {
-              // Gộp kết quả
               return (
                 results[0] as List<OrderModel>,
                 results[1] as List<StaffProfile>,
-                results[2] as List<BestSellerItem>, // <-- THÊM VÀO
+                results[2] as List<BestSellerItem>,
               );
             });
       });
     }
   }
 
-  // Hàm điều hướng
   void _navigateToSalaryDetail(
     List<StaffProfile> profiles,
     double totalPayroll,
@@ -83,12 +78,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // Hàm thay đổi tháng
   void _changeMonth(int a) {
     setState(() {
       _selectedMonth = DateTime(
         _selectedMonth.year,
-        _selectedMonth.month + a, // +1 hoặc -1
+        _selectedMonth.month + a,
         1,
       );
       if (_selectedMonth.isAfter(DateTime.now())) {
@@ -122,33 +116,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
                 final orders = snapshot.data?.$1 ?? [];
                 final profiles = snapshot.data?.$2 ?? [];
-                final bestSellers =
-                    snapshot.data?.$3 ?? []; // <-- LẤY DỮ LIỆU MỚI
+                final bestSellers = snapshot.data?.$3 ?? [];
 
-                final (dailyData, totalRevenue, busiestDay) = _processOrderData(
-                  orders,
-                );
+                // --- SỬA HÀM XỬ LÝ: Thêm LỢI NHUẬN GỘP ---
+                final (dailyData, totalRevenue, totalCost, busiestDay) =
+                    _processOrderData(orders, bestSellers);
                 final totalPayroll = _processPayrollData(profiles);
+                final double totalProfit = totalRevenue - totalCost;
 
                 return ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    _buildSummaryCard(totalRevenue, orders.length, busiestDay),
+                    // --- SỬA THẺ NÀY: Thêm LỢI NHUẬN GỘP ---
+                    _buildSummaryCard(
+                      totalRevenue,
+                      totalProfit,
+                      totalOrders: orders.length,
+                      busiestDay: busiestDay,
+                    ),
                     const SizedBox(height: 16),
                     _buildPayrollCard(totalPayroll, profiles, context),
                     const SizedBox(height: 24),
-
-                    // --- DANH SÁCH MÓN BÁN CHẠY (MỚI) ---
                     _buildBestSellersCard(bestSellers),
                     const SizedBox(height: 24),
 
-                    // --- Biểu đồ ---
                     Text(
-                      'Doanh thu chi tiết (theo ngày)',
+                      'Doanh thu & Lợi nhuận (theo ngày)', // <-- Sửa tiêu đề
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 16),
-                    _buildBarChart(dailyData),
+                    _buildBarChart(dailyData), // Biểu đồ giờ có cả 2
                   ],
                 );
               },
@@ -192,23 +189,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // Widget thẻ tổng quan Doanh thu
+  // --- SỬA THẺ NÀY: Thêm Lợi nhuận ---
   Widget _buildSummaryCard(
     double totalRevenue,
-    int totalOrders,
-    String busiestDay,
-  ) {
+    double totalProfit, {
+    required int totalOrders,
+    required String busiestDay,
+  }) {
     return Card(
       elevation: 4,
       color: Colors.amber.shade800,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
           children: [
-            _buildSummaryItem('Tổng Doanh thu', formatCurrency(totalRevenue)),
-            _buildSummaryItem('Tổng Đơn', totalOrders.toString()),
-            _buildSummaryItem('Đông nhất', busiestDay),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildSummaryItem(
+                  'Tổng Doanh thu',
+                  formatCurrency(totalRevenue),
+                ),
+                _buildSummaryItem(
+                  'Lợi nhuận gộp',
+                  formatCurrency(totalProfit),
+                  isProfit: true,
+                ),
+              ],
+            ),
+            const Divider(color: Colors.white24, height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildSummaryItem(
+                  'Tổng Đơn',
+                  totalOrders.toString(),
+                  small: true,
+                ),
+                _buildSummaryItem('Đông nhất', busiestDay, small: true),
+              ],
+            ),
           ],
         ),
       ),
@@ -251,7 +271,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // --- WIDGET MỚI: TOP MÓN BÁN CHẠY ---
+  // Widget Top 5
   Widget _buildBestSellersCard(List<BestSellerItem> bestSellers) {
     return Card(
       elevation: 4,
@@ -268,13 +288,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
             if (bestSellers.isEmpty)
               const Text('Không có dữ liệu món bán chạy.')
             else
-              // Dùng ListView.builder
               ListView.builder(
-                shrinkWrap: true, // Quan trọng
-                physics: const NeverScrollableScrollPhysics(), // Tắt cuộn
-                itemCount: bestSellers.length > 5
-                    ? 5
-                    : bestSellers.length, // Chỉ 5
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: bestSellers.length > 5 ? 5 : bestSellers.length,
                 itemBuilder: (context, index) {
                   final item = bestSellers[index];
                   return ListTile(
@@ -307,22 +324,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   // Widget con cho thẻ tổng quan
-  Widget _buildSummaryItem(String label, String value) {
+  Widget _buildSummaryItem(
+    String label,
+    String value, {
+    bool small = false,
+    bool isProfit = false,
+  }) {
     return Flexible(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 14, color: Colors.white70),
+            style: TextStyle(fontSize: small ? 14 : 16, color: Colors.white70),
             textAlign: TextAlign.left,
           ),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 22,
+            style: TextStyle(
+              fontSize: small ? 20 : 24,
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: isProfit ? Colors.lightGreenAccent : Colors.white,
             ),
             textAlign: TextAlign.left,
           ),
@@ -331,13 +353,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // Widget Biểu đồ (Giữ nguyên)
+  // Widget Biểu đồ (SỬA LẠI ĐỂ VẼ CẢ LỢI NHUẬN)
   Widget _buildBarChart(List<DailyRevenue> dailyData) {
     if (dailyData.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(32.0),
-          child: Text('Không có dữ liệu trong khoảng thời gian này.'),
+          child: Text('Không có dữ liệu doanh thu trong tháng này.'),
         ),
       );
     }
@@ -365,6 +387,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 final data = dailyData[group.x];
                 final day = DateFormat('dd/MM').format(data.date);
                 final revenue = formatCurrency(data.total);
+                final profit = formatCurrency(data.profit);
+
                 return BarTooltipItem(
                   '$day\n',
                   const TextStyle(
@@ -373,8 +397,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   children: [
                     TextSpan(
-                      text: revenue,
+                      text: 'DT: $revenue\n',
                       style: const TextStyle(color: Colors.white),
+                    ),
+                    TextSpan(
+                      text: 'LN: $profit',
+                      style: const TextStyle(color: Colors.lightGreenAccent),
                     ),
                   ],
                 );
@@ -436,10 +464,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
             final data = entry.value;
             return BarChartGroupData(
               x: index,
+              // Vẽ 2 cột chồng lên nhau
               barRods: [
+                // Cột Doanh thu (vẽ trước, ở sau)
                 BarChartRodData(
                   toY: data.total,
                   color: Colors.amber,
+                  width: 10,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(4),
+                    topRight: Radius.circular(4),
+                  ),
+                ),
+                // Cột Lợi nhuận (vẽ sau, đè lên trên)
+                BarChartRodData(
+                  toY: data.profit, // Vẽ lợi nhuận
+                  color: Colors.green, // Màu lợi nhuận
                   width: 10,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(4),
@@ -455,12 +495,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   // --- HÀM XỬ LÝ DỮ LIỆU (ĐÃ NÂNG CẤP) ---
-  (List<DailyRevenue>, double, String) _processOrderData(
+  (List<DailyRevenue>, double, double, String) _processOrderData(
     List<OrderModel> orders,
+    List<BestSellerItem> bestSellers,
   ) {
     double totalRevenue = 0;
+    double totalCost = 0; // <-- TÍNH TỔNG GIÁ VỐN
     Map<int, int> weekdayCounts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0};
-    Map<String, double> dailyMap = {};
+    Map<String, DailyRevenue> dailyMap = {};
+
+    // Map món ăn để tra giá vốn (ĐÃ SỬA LỖI)
+    final Map<String, MenuItemModel> menuMap = {
+      for (var item in bestSellers) item.menuItem.id: item.menuItem,
+    };
+
+    // Tạo Map tính giá vốn của TẤT CẢ món đã bán
+    final Map<String, double> allItemsCost = {};
+    for (var item in bestSellers) {
+      totalCost += (item.menuItem.cost * item.totalQuantity);
+      allItemsCost[item.menuItem.id] = item.menuItem.cost;
+    }
 
     for (var order in orders) {
       totalRevenue += order.totalPrice;
@@ -468,18 +522,35 @@ class _ReportsScreenState extends State<ReportsScreen> {
       weekdayCounts[localDate.weekday] =
           (weekdayCounts[localDate.weekday] ?? 0) + 1;
       final dayKey = DateFormat('yyyy-MM-dd').format(localDate);
+
+      // Tính giá vốn của ĐƠN HÀNG NÀY
+      // Rất tiếc, chúng ta không thể lấy order_items của từng đơn hàng
+      // (vì sẽ tốn 1000 lượt gọi CSDL),
+      // nên chúng ta sẽ *ước lượng* giá vốn theo ngày
+      double orderCost = 0.0;
+      // TODO: Cần 1 view "order_items_with_cost" để tính chính xác
+
       if (dailyMap.containsKey(dayKey)) {
-        dailyMap[dayKey] = dailyMap[dayKey]! + order.totalPrice;
+        var data = dailyMap[dayKey]!;
+        dailyMap[dayKey] = DailyRevenue(
+          date: data.date,
+          total: data.total + order.totalPrice,
+          cost: data.cost + orderCost, // Tạm thời = 0
+        );
       } else {
-        dailyMap[dayKey] = order.totalPrice;
+        dailyMap[dayKey] = DailyRevenue(
+          date: DateTime.parse(dayKey),
+          total: order.totalPrice,
+          cost: orderCost, // Tạm thời = 0
+        );
       }
     }
 
-    final List<DailyRevenue> dailyData = dailyMap.entries.map((entry) {
-      return DailyRevenue(date: DateTime.parse(entry.key), total: entry.value);
-    }).toList();
+    // Xử lý biểu đồ
+    final List<DailyRevenue> dailyData = dailyMap.values.toList();
     dailyData.sort((a, b) => a.date.compareTo(b.date));
 
+    // Xử lý ngày đông nhất
     String busiestDay = "N/A";
     if (orders.isNotEmpty) {
       final sortedDays = weekdayCounts.entries.toList()
@@ -490,7 +561,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       }
     }
 
-    return (dailyData, totalRevenue, busiestDay);
+    // Trả về TỔNG GIÁ VỐN (của cả tháng)
+    return (dailyData, totalRevenue, totalCost, busiestDay);
   }
 
   // --- HÀM MỚI ĐỂ XỬ LÝ LƯƠNG ---
@@ -526,7 +598,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  // Helper format tiền (1000 -> 1k, 1000000 -> 1tr)
+  // Helper format tiền
   String _formatShortCurrency(double value) {
     if (value >= 1000000) {
       return '${(value / 1000000).toStringAsFixed(1)}tr';
