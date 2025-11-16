@@ -1,133 +1,123 @@
-// lib/services/menu_service.dart
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/services/menu_service.dart]
 
-import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import 'package:pocketbase/pocketbase.dart';
 import 'package:myshop/models/menu_item.dart';
+import 'package:http/http.dart' as http;
 
-/// Lớp Service chuyên xử lý các thao tác liên quan đến Collection 'menu_items'
 class MenuService {
   final PocketBase pb;
 
-  // Constructor nhận instance PocketBase
   MenuService(this.pb);
 
-  /// 1. Lấy (Read) danh sách món ăn
+  /// 1. LẤY (READ)
   Future<List<MenuItemModel>> getMenu() async {
     try {
       final records = await pb
           .collection('menu_items')
-          .getFullList(sort: 'name'); // Sửa: Tải TẤT CẢ món để quản lý
-
+          .getFullList(sort: 'category,-created');
       return records
           .map((record) => MenuItemModel.fromRecord(record, pb))
           .toList();
     } catch (e) {
-      print('MenuService - Error fetching menu: $e');
+      print('MenuService - getMenu Error: $e');
       throw Exception('Failed to load menu: $e');
     }
   }
 
-  /// 2. Thêm (Create) một món ăn mới (có thể kèm hình ảnh)
-  Future<void> addMenuItem({
+  /// 2. THÊM (CREATE) - (ĐÃ SỬA)
+  Future<void> createMenuItem({
     required String name,
     required double price,
     required String category,
-    required String unit,
     required bool inStock,
-    String? description,
-    XFile? imageFile, // Từ package image_picker
+    required String unit,
+    required String description,
+    File? image,
+    double cost = 0.0, // <-- Thêm trường cost
   }) async {
     try {
       final body = <String, dynamic>{
         'name': name,
         'price': price,
         'category': category,
-        'unit': unit,
         'in_stock': inStock,
-        'description': description ?? '',
+        'unit': unit,
+        'description': description,
+        'cost': cost, // <-- Thêm cost vào body
       };
 
-      // --- PHẦN SỬA LỖI ---
-      // Khởi tạo list non-nullable (không thể null)
-      final List<http.MultipartFile> files = [];
-
-      if (imageFile != null) {
-        // Thêm vào list nếu file tồn tại
-        files.add(
-          await http.MultipartFile.fromPath(
-            'image', // Tên trường 'image' trong PocketBase
-            imageFile.path,
-            filename: imageFile.name,
-          ),
-        );
+      http.MultipartFile? imageFile;
+      if (image != null) {
+        imageFile = await http.MultipartFile.fromPath('image', image.path);
       }
-      // --- KẾT THÚC PHẦN SỬA ---
 
-      // 'files' giờ luôn là List<MultipartFile> (có thể rỗng, nhưng không null)
-      await pb.collection('menu_items').create(body: body, files: files);
+      await pb
+          .collection('menu_items')
+          .create(
+            body: body,
+            // --- SỬA LỖI Ở ĐÂY ---
+            files: imageFile != null ? [imageFile] : [], // Dùng [] thay vì null
+          );
     } catch (e) {
-      print('MenuService - Error adding menu item: $e');
-      throw Exception('Failed to add menu item: $e');
+      print('MenuService - createMenuItem Error: $e');
+      throw Exception('Failed to create menu item: $e');
     }
   }
 
-  /// 3. Cập nhật (Update) một món ăn
+  /// 3. SỬA (UPDATE) - (ĐÃ SỬA)
   Future<void> updateMenuItem({
     required String id,
     required String name,
     required double price,
     required String category,
-    required String unit,
     required bool inStock,
-    String? description,
-    XFile? newImageFile, // Hình ảnh mới (nếu thay đổi)
-    bool deleteExistingImage = false, // Cờ để xóa ảnh cũ
+    required String unit,
+    required String description,
+    File? image,
+    String? currentImageFilename,
+    double cost = 0.0, // <-- Thêm trường cost
   }) async {
     try {
       final body = <String, dynamic>{
         'name': name,
         'price': price,
         'category': category,
-        'unit': unit,
         'in_stock': inStock,
-        'description': description ?? '',
+        'unit': unit,
+        'description': description,
+        'cost': cost, // <-- Thêm cost vào body
       };
 
-      if (deleteExistingImage) {
-        body['image'] = null; // Gán null để xóa ảnh
+      http.MultipartFile? imageFile;
+      if (image != null) {
+        // Nếu có ảnh mới, chuẩn bị ảnh mới
+        imageFile = await http.MultipartFile.fromPath('image', image.path);
+      } else if (currentImageFilename == null || currentImageFilename.isEmpty) {
+        // Nếu không có ảnh mới VÀ không có ảnh cũ -> Xóa ảnh
+        body['image'] = null;
       }
 
-      // --- PHẦN SỬA LỖI ---
-      // Khởi tạo list non-nullable (không thể null)
-      final List<http.MultipartFile> files = [];
-
-      if (newImageFile != null) {
-        // Thêm vào list nếu file tồn tại
-        files.add(
-          await http.MultipartFile.fromPath(
-            'image',
-            newImageFile.path,
-            filename: newImageFile.name,
-          ),
-        );
-      }
-      // --- KẾT THÚC PHẦN SỬA ---
-
-      // 'files' giờ luôn là List<MultipartFile> (có thể rỗng, nhưng không null)
-      await pb.collection('menu_items').update(id, body: body, files: files);
+      await pb
+          .collection('menu_items')
+          .update(
+            id,
+            body: body,
+            // --- SỬA LỖI Ở ĐÂY ---
+            files: imageFile != null ? [imageFile] : [], // Dùng [] thay vì null
+          );
     } catch (e) {
-      print('MenuService - Error updating menu item: $e');
+      print('MenuService - updateMenuItem Error: $e');
       throw Exception('Failed to update menu item: $e');
     }
   }
 
-  /// 4. Xóa (Delete) một món ăn
+  /// 4. XÓA (DELETE)
   Future<void> deleteMenuItem(String id) async {
     try {
       await pb.collection('menu_items').delete(id);
     } catch (e) {
-      print('MenuService - Error deleting menu item: $e');
+      print('MenuService - deleteMenuItem Error: $e');
       throw Exception('Failed to delete menu item: $e');
     }
   }

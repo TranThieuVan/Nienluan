@@ -1,70 +1,64 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/models/menu_item.dart]
+
 import 'package:pocketbase/pocketbase.dart';
 
-// Enum để định nghĩa rõ ràng các loại món
-enum MenuItemCategory {
-  food,
-  drink;
-
-  static MenuItemCategory fromString(String? categoryString) {
-    return (categoryString == 'drink')
-        ? MenuItemCategory.drink
-        : MenuItemCategory.food;
-  }
-}
+enum MenuItemCategory { food, drink }
 
 class MenuItemModel {
   final String id;
   final String name;
-  final MenuItemCategory category;
   final double price;
-  final String description;
+  final MenuItemCategory category;
+  final String? image;
   final bool inStock;
   final String unit;
-
-  // Xử lý hình ảnh
-  final String? imageFilename; // Tên file gốc (ví dụ: 'image.png')
-  final String? imageUrl; // URL đầy đủ để hiển thị (ví dụ: 'http://...')
+  final String description;
+  final String? imageUrl;
+  final double cost; // Giá vốn
 
   MenuItemModel({
     required this.id,
     required this.name,
-    required this.category,
     required this.price,
-    required this.description,
-    required this.inStock,
-    required this.unit,
-    this.imageFilename,
+    required this.category,
+    this.image,
+    this.inStock = true,
+    this.unit = '',
+    this.description = '',
     this.imageUrl,
+    this.cost = 0.0,
   });
 
-  /// Phương thức factory để chuyển đổi từ PocketBase RecordModel
-  /// Nó cần instance `pb` để xây dựng URL hình ảnh
   factory MenuItemModel.fromRecord(RecordModel record, PocketBase pb) {
-    // Lấy tên file từ trường 'image'
-    final filename = record.getStringValue('image');
-    String? fullUrl;
-
-    // Nếu tên file tồn tại (người dùng đã upload ảnh)
-    if (filename.isNotEmpty) {
-      // Xây dựng URL đầy đủ
-      fullUrl = pb.getFileUrl(record, filename).toString();
+    String? imageUrl;
+    final imageFilename = record.getStringValue('image');
+    if (imageFilename.isNotEmpty) {
+      imageUrl = pb
+          .getFileUrl(record, imageFilename, thumb: '100x100')
+          .toString();
     }
 
     return MenuItemModel(
       id: record.id,
       name: record.getStringValue('name'),
-      category: MenuItemCategory.fromString(record.getStringValue('category')),
-      price: record.getDoubleValue('price'), // Lấy giá trị dạng double
-      description: record.getStringValue('description'),
+      price: record.getDoubleValue('price'),
+      category: record.getStringValue('category') == 'food'
+          ? MenuItemCategory.food
+          : MenuItemCategory.drink,
+      image: imageFilename,
       inStock: record.getBoolValue('in_stock'),
       unit: record.getStringValue('unit'),
-
-      imageFilename: filename.isNotEmpty ? filename : null,
-      imageUrl: fullUrl,
+      description: record.getStringValue('description'),
+      imageUrl: imageUrl,
+      cost: record.getDoubleValue('cost'),
     );
   }
 
-  // Getter tiện lợi
-  String get displayCategory =>
-      (category == MenuItemCategory.drink) ? 'Nước uống' : 'Món ăn';
+  // --- SỬA LỖI: THÊM LẠI GETTER NÀY ---
+  String get displayCategory {
+    return category == MenuItemCategory.food ? 'Món ăn' : 'Thức uống';
+  }
+  // --- KẾT THÚC SỬA LỖI ---
+
+  double get profit => price - cost;
 }

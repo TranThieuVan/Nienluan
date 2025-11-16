@@ -1,17 +1,15 @@
-// lib/screens/manager/menu_item_form_screen.dart (ĐÃ SỬA LỖI dart:io)
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/menu_item_form_screen.dart]
 
-// --- KHÔNG CÒN import 'dart:io'; ---
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:myshop/models/menu_item.dart';
 import 'package:myshop/services/pocketbase_service.dart';
-import 'package:myshop/utils/constants.dart';
-// --- THÊM IMPORT NÀY ĐỂ DÙNG Uint8List ---
-import 'dart:typed_data';
 
 class MenuItemFormScreen extends StatefulWidget {
   final MenuItemModel? menuItem;
+
   const MenuItemFormScreen({super.key, this.menuItem});
 
   @override
@@ -21,139 +19,131 @@ class MenuItemFormScreen extends StatefulWidget {
 class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final pbService = PocketBaseService.instance;
-  final ImagePicker _picker = ImagePicker();
+  bool _isLoading = false;
 
   // Controllers
   late TextEditingController _nameController;
   late TextEditingController _priceController;
-  late TextEditingController _descController;
-  String _unit = MENU_ITEM_UNITS.first;
+  late TextEditingController _unitController;
+  late TextEditingController _descriptionController;
+  late TextEditingController _costController; // <-- Controller cho Giá vốn
 
-  // Form values
-  MenuItemCategory _category = MenuItemCategory.food;
+  // State
+  MenuItemCategory _selectedCategory = MenuItemCategory.food;
   bool _inStock = true;
-  String? _existingImageUrl; // Hình ảnh cũ (nếu có)
-  bool _deleteExistingImage = false; // Cờ để xóa ảnh
-  bool _isLoading = false;
+  XFile? _selectedImage;
+  String? _existingImageUrl;
 
-  // --- THAY ĐỔI ĐỂ SỬA LỖI ---
-  XFile? _newImageFile; // Giữ XFile để upload
-  Uint8List? _newImagePreviewBytes; // Dùng Uint8List để PREVIEW ảnh
-
-  bool get _isEditMode => widget.menuItem != null;
+  bool get _isEditing => widget.menuItem != null;
 
   @override
   void initState() {
     super.initState();
     final item = widget.menuItem;
-    _nameController = TextEditingController(text: item?.name ?? '');
+    _nameController = TextEditingController(text: item?.name);
     _priceController = TextEditingController(
-      text: item?.price.toStringAsFixed(0) ?? '',
+      text: item?.price.toString() ?? '0',
     );
-    _descController = TextEditingController(text: item?.description ?? '');
-    _category = item?.category ?? MenuItemCategory.food;
+    _unitController = TextEditingController(text: item?.unit);
+    _descriptionController = TextEditingController(text: item?.description);
+    _costController = TextEditingController(
+      text: item?.cost.toString() ?? '0',
+    ); // <-- Khởi tạo
+    _selectedCategory = item?.category ?? MenuItemCategory.food;
     _inStock = item?.inStock ?? true;
     _existingImageUrl = item?.imageUrl;
-
-    _unit = item?.unit ?? MENU_ITEM_UNITS.first;
-    if (!MENU_ITEM_UNITS.contains(_unit)) {
-      _unit = MENU_ITEM_UNITS.first;
-    }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _priceController.dispose();
-    _descController.dispose();
+    _unitController.dispose();
+    _descriptionController.dispose();
+    _costController.dispose(); // <-- Dispose
     super.dispose();
   }
 
-  // Xử lý chọn ảnh
   Future<void> _pickImage() async {
-    final XFile? pickedFile = await _picker.pickImage(
-      source: ImageSource.gallery,
-    );
-    if (pickedFile != null) {
-      // Đọc dữ liệu ảnh vào bộ nhớ
-      final bytes = await pickedFile.readAsBytes();
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
       setState(() {
-        _newImageFile = pickedFile; // Lưu file để upload
-        _newImagePreviewBytes = bytes; // Lưu bytes để preview
-        _deleteExistingImage = false;
-        _existingImageUrl = null; // Xóa ảnh cũ (nếu có)
+        _selectedImage = image;
       });
     }
   }
 
-  // Xử lý Lưu form (Không cần thay đổi logic, vì service đã nhận XFile)
   Future<void> _submitForm() async {
-    if (_formKey.currentState?.validate() ?? false) {
-      if (_isLoading) return;
-      setState(() {
-        _isLoading = true;
-      });
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+    });
 
-      try {
-        final data = {
-          'name': _nameController.text,
-          'price': double.tryParse(_priceController.text) ?? 0.0,
-          'category': _category.name,
-          'unit': _unit,
-          'inStock': _inStock,
-          'description': _descController.text,
-        };
+    try {
+      final name = _nameController.text;
+      final price = double.tryParse(_priceController.text) ?? 0.0;
+      final unit = _unitController.text;
+      final description = _descriptionController.text;
+      final cost =
+          double.tryParse(_costController.text) ?? 0.0; // <-- Lấy giá vốn
+      final category = _selectedCategory == MenuItemCategory.food
+          ? 'food'
+          : 'drink';
 
-        if (_isEditMode) {
-          await pbService.menuItems.updateMenuItem(
-            id: widget.menuItem!.id,
-            name: data['name'] as String,
-            price: data['price'] as double,
-            category: data['category'] as String,
-            unit: data['unit'] as String,
-            inStock: data['inStock'] as bool,
-            description: data['description'] as String,
-            newImageFile: _newImageFile, // Gửi XFile
-            deleteExistingImage: _deleteExistingImage,
-          );
-        } else {
-          await pbService.menuItems.addMenuItem(
-            name: data['name'] as String,
-            price: data['price'] as double,
-            category: data['category'] as String,
-            unit: data['unit'] as String,
-            inStock: data['inStock'] as bool,
-            description: data['description'] as String,
-            imageFile: _newImageFile, // Gửi XFile
-          );
-        }
+      File? imageFile = _selectedImage != null
+          ? File(_selectedImage!.path)
+          : null;
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                _isEditMode ? 'Cập nhật thành công!' : 'Thêm món thành công!',
-              ),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.of(context).pop(true); // Trả về true để báo reload
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Lỗi khi lưu: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+      if (_isEditing) {
+        // --- SỬA LỖI Ở ĐÂY ---
+        await pbService.menu.updateMenuItem(
+          id: widget.menuItem!.id,
+          name: name,
+          price: price,
+          category: category,
+          inStock: _inStock,
+          unit: unit,
+          description: description,
+          image: imageFile,
+          // Sửa tên tham số 'currentImageFilename'
+          currentImageFilename: widget.menuItem!.image,
+          cost: cost, // <-- Truyền giá vốn
+        );
+      } else {
+        // --- SỬA LỖI Ở ĐÂY ---
+        await pbService.menu.createMenuItem(
+          name: name,
+          price: price,
+          category: category,
+          inStock: _inStock,
+          unit: unit,
+          description: description,
+          image: imageFile,
+          cost: cost, // <-- Truyền giá vốn
+        );
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã lưu món "${name}" thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.of(context).pop(true); // Trả về true để refresh
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi khi lưu: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -162,225 +152,194 @@ class _MenuItemFormScreenState extends State<MenuItemFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditMode ? 'Sửa Món Ăn' : 'Thêm Món Ăn Mới'),
-        backgroundColor: Colors.green.shade600,
+        title: Text(_isEditing ? 'Sửa Món' : 'Thêm Món Mới'),
+        backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: _isLoading ? null : _submitForm,
-            tooltip: 'Lưu',
-          ),
-        ],
       ),
-      body: _isLoading
-          ? const Center(/* ... */)
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // (TextFormField Tên Món - giữ nguyên)
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Tên món ăn*',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (value) => (value?.isEmpty ?? true)
-                          ? 'Tên không được để trống'
-                          : null,
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            _buildImagePicker(),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: 'Tên món',
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Vui lòng nhập tên món';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _priceController,
+                    decoration: const InputDecoration(
+                      labelText: 'Giá bán (VND)',
+                      border: OutlineInputBorder(),
                     ),
-                    const SizedBox(height: 16),
-
-                    // (Phần Hình ảnh - giữ nguyên)
-                    Text(
-                      'Hình ảnh',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    _buildImagePreview(), // DÙNG HÀM MỚI
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        TextButton.icon(
-                          icon: const Icon(Icons.photo_library),
-                          label: const Text('Chọn ảnh mới'),
-                          onPressed: _pickImage,
-                        ),
-                        if (_isEditMode &&
-                            (_existingImageUrl != null ||
-                                _newImagePreviewBytes !=
-                                    null)) // SỬA BIẾN CHECK
-                          TextButton.icon(
-                            icon: Icon(
-                              Icons.delete_forever,
-                              color: Colors.red.shade700,
-                            ),
-                            label: Text(
-                              'Xóa ảnh',
-                              style: TextStyle(color: Colors.red.shade700),
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _newImageFile = null;
-                                _newImagePreviewBytes = null; // SỬA BIẾN NÀY
-                                _existingImageUrl = null;
-                                _deleteExistingImage = true;
-                              });
-                            },
-                          ),
-                      ],
-                    ),
-                    const Divider(height: 24),
-
-                    // (Phần Giá và Đơn vị - đã sửa)
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: TextFormField(
-                            controller: _priceController,
-                            decoration: const InputDecoration(
-                              labelText: 'Giá (VND)*',
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                            ],
-                            validator: (value) {
-                              if (value?.isEmpty ?? true)
-                                return 'Giá không được trống';
-                              if (double.tryParse(value!) == null)
-                                return 'Giá không hợp lệ';
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          flex: 1,
-                          child: DropdownButtonFormField<String>(
-                            value: _unit,
-                            decoration: const InputDecoration(
-                              labelText: 'Đơn vị*',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: MENU_ITEM_UNITS.map((String unitValue) {
-                              return DropdownMenuItem<String>(
-                                value: unitValue,
-                                child: Text(unitValue),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  _unit = value;
-                                });
-                              }
-                            },
-                            validator: (value) =>
-                                (value == null || value.isEmpty)
-                                ? 'Chưa chọn'
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // (Phần Phân loại - giữ nguyên)
-                    DropdownButtonFormField<MenuItemCategory>(
-                      value: _category,
-                      decoration: const InputDecoration(
-                        labelText: 'Phân loại*',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: MenuItemCategory.food,
-                          child: Text('Món ăn'),
-                        ),
-                        DropdownMenuItem(
-                          value: MenuItemCategory.drink,
-                          child: Text('Thức uống'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            _category = value;
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // (Phần Mô tả - giữ nguyên)
-                    TextFormField(
-                      controller: _descController,
-                      decoration: const InputDecoration(
-                        labelText: 'Mô tả (không bắt buộc)',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // (Switch Tình trạng - giữ nguyên)
-                    SwitchListTile(
-                      title: Text(_inStock ? 'Đang còn hàng' : 'Đã hết hàng'),
-                      value: _inStock,
-                      onChanged: (value) {
-                        setState(() {
-                          _inStock = value;
-                        });
-                      },
-                      activeColor: Colors.green,
-                    ),
-                  ],
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value == null ||
+                          value.isEmpty ||
+                          double.tryParse(value) == null) {
+                        return 'Vui lòng nhập giá hợp lệ';
+                      }
+                      return null;
+                    },
+                  ),
                 ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    controller: _costController, // <-- THÊM TRƯỜNG GIÁ VỐN
+                    decoration: const InputDecoration(
+                      labelText: 'Giá vốn (VND)',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value == null ||
+                          value.isEmpty ||
+                          double.tryParse(value) == null) {
+                        return 'Vui lòng nhập giá hợp lệ';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _unitController,
+              decoration: const InputDecoration(
+                labelText: 'Đơn vị (vd: ly, dĩa, phần)',
+                border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<MenuItemCategory>(
+              value: _selectedCategory,
+              decoration: const InputDecoration(
+                labelText: 'Phân loại',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: MenuItemCategory.food,
+                  child: Text('Món ăn'),
+                ),
+                DropdownMenuItem(
+                  value: MenuItemCategory.drink,
+                  child: Text('Thức uống'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _selectedCategory = value;
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Mô tả (không bắt buộc)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            SwitchListTile(
+              title: const Text('Còn hàng'),
+              value: _inStock,
+              onChanged: (value) {
+                setState(() {
+                  _inStock = value;
+                });
+              },
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save),
+              label: Text(_isLoading ? 'Đang lưu...' : 'Lưu'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _isLoading ? null : _submitForm,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  // --- SỬA LẠI HÀM NÀY ĐỂ DÙNG Image.memory ---
-  Widget _buildImagePreview() {
+  Widget _buildImagePicker() {
     return Center(
-      child: Container(
-        width: double.infinity,
-        height: 250,
-        margin: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.grey.shade100,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: _newImagePreviewBytes != null
-              // 1. Hiển thị ảnh mới (từ bộ nhớ)
-              ? Image.memory(_newImagePreviewBytes!, fit: BoxFit.contain)
-              // 2. Hiển thị ảnh cũ (từ URL)
-              : _existingImageUrl != null
-              ? Image.network(
-                  _existingImageUrl!,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) => const Icon(
-                    Icons.broken_image,
-                    size: 50,
-                    color: Colors.red,
-                  ),
-                )
-              // 3. Hiển thị placeholder
-              : const Center(
-                  child: Icon(Icons.image_search, size: 60, color: Colors.grey),
-                ),
-        ),
+      child: Column(
+        children: [
+          Container(
+            width: 150,
+            height: 150,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: _buildImage(),
+            ),
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.image),
+            label: Text(_selectedImage != null ? 'Đổi ảnh khác' : 'Chọn ảnh'),
+            onPressed: _pickImage,
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _buildImage() {
+    if (_selectedImage != null) {
+      return Image.file(File(_selectedImage!.path), fit: BoxFit.cover);
+    }
+    if (_existingImageUrl != null) {
+      return Image.network(
+        _existingImageUrl!,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Center(child: CircularProgressIndicator());
+        },
+      );
+    }
+    return const Icon(Icons.no_photography, size: 50, color: Colors.grey);
   }
 }

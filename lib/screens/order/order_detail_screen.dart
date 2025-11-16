@@ -3,26 +3,20 @@
 import 'package:flutter/material.dart';
 import 'package:myshop/models/table.dart';
 import 'package:myshop/models/menu_item.dart';
-import 'package:myshop/models/order.dart'; // Import OrderModel
+import 'package:myshop/models/order.dart';
 import 'package:myshop/services/pocketbase_service.dart';
 import 'package:myshop/utils/currency_formatter.dart';
-import 'package:myshop/models/order_item_view.dart'; // <--- DÒNG NÀY ĐÃ ĐƯỢC THÊM VÀO
+import 'package:myshop/models/order_item_view.dart';
 
-// --- SỬA LỚP NÀY (THÊM notes) ---
 class CartItem {
   final MenuItemModel item;
   int quantity;
-  String? notes; // <-- THÊM DÒNG NÀY
+  String? notes;
 
-  CartItem({
-    required this.item,
-    this.quantity = 1,
-    this.notes, // <-- THÊM VÀO CONSTRUCTOR
-  });
+  CartItem({required this.item, this.quantity = 1, this.notes});
 
   double get subtotal => item.price * quantity;
 }
-// ---------------------------------------------------
 
 class OrderDetailScreen extends StatefulWidget {
   final TableModel table;
@@ -49,7 +43,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _menuFuture = pbService.menuItems.getMenu();
+    // --- SỬA LỖI Ở ĐÂY ---
+    _menuFuture = pbService.menu.getMenu(); // Đổi từ menuItems -> menu
+    // --- KẾT THÚC SỬA LỖI ---
     _searchController.addListener(_onSearchChanged);
 
     if (widget.existingOrder != null) {
@@ -64,11 +60,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       _isLoadingExistingCart = true;
     });
     try {
-      // --- LỖI Ở ĐÂY ---
-      // Hàm này trả về List<OrderItemView>
       final List<OrderItemView> existingItems = await pbService
           .getOrderItemsWithDetails(widget.existingOrder!.id);
-      // --- KẾT THÚC LỖI ---
 
       final Map<String, CartItem> initialCart = {};
       for (final itemView in existingItems) {
@@ -76,7 +69,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           initialCart[itemView.menuItem.id] = CartItem(
             item: itemView.menuItem,
             quantity: itemView.quantity,
-            notes: itemView.notes, // <-- LẤY GHI CHÚ CŨ
+            notes: itemView.notes,
           );
         }
       }
@@ -151,7 +144,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     });
   }
 
-  // --- HÀM XỬ LÝ GỬI (SỬA LẠI ĐỂ GỬI notes) ---
+  // --- HÀM XỬ LÝ GỬI ---
   Future<void> _processOrder() async {
     if (_cart.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -175,7 +168,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         // --- Logic GỌI THÊM ---
         orderId = widget.existingOrder!.id;
 
-        // Lấy các món đã có
         final existingItemViews = await pbService.getOrderItemsWithDetails(
           orderId,
         );
@@ -188,13 +180,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         for (final cartItem in _cart.values) {
           if (existingItemsMap.containsKey(cartItem.item.id)) {
             // Món đã có -> Cần UPDATE
-            final existingItem = existingItemsMap[cartItem.item.id]!;
-            if (existingItem.quantity != cartItem.quantity ||
-                existingItem.notes != cartItem.notes) {
-              // Cập nhật (PocketBase không hỗ trợ update, nên ta Xóa + Tạo)
-              // Tạm thời chỉ tạo mới, CHƯA XỬ LÝ UPDATE/DELETE
-              // (Đây là một logic phức tạp, ta sẽ tạm bỏ qua)
-            }
           } else {
             // Món mới -> TẠO MỚI
             updateFutures.add(
@@ -203,37 +188,39 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 menuItemId: cartItem.item.id,
                 quantity: cartItem.quantity,
                 price: cartItem.item.price,
-                notes: cartItem.notes, // <-- Gửi ghi chú
+                notes: cartItem.notes,
               ),
             );
           }
         }
         await Future.wait(updateFutures);
 
-        // Cập nhật tổng tiền
-        await pbService.updateOrderTotalPrice(orderId, newTotalPrice);
+        // Cập nhật tổng tiền (tính lại toàn bộ)
+        final allItems = await pbService.getOrderItemsWithDetails(orderId);
+        final newTotal = allItems.fold<double>(
+          0.0,
+          (sum, item) => sum + item.subtotal,
+        );
+
+        await pbService.updateOrderTotalPrice(orderId, newTotal);
       } else {
         // --- Logic TẠO MỚI ---
-        // 1. Tạo record 'orders'
         orderId = await pbService.createOrderRecord(
           widget.table.id,
           _totalPrice,
         );
-        // 2. Tạo các record 'order_items'
         for (final cartItem in _cart.values) {
           await pbService.createOrderItemRecord(
             orderId: orderId,
             menuItemId: cartItem.item.id,
             quantity: cartItem.quantity,
             price: cartItem.item.price,
-            notes: cartItem.notes, // <-- Gửi ghi chú
+            notes: cartItem.notes,
           );
         }
-        // 3. Cập nhật trạng thái bàn
         await pbService.updateTableStatus(widget.table.id, 'occupied');
       }
 
-      // 4. Thông báo và đóng màn hình
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -291,7 +278,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       ),
     );
 
-    // Cập nhật state (nếu có thay đổi)
     if (newNote != null) {
       setState(() {
         cartItem.notes = newNote;
@@ -448,7 +434,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  // --- SỬA WIDGET NÀY ĐỂ THÊM NÚT GHI CHÚ ---
   Widget _buildMenuListView(List<MenuItemModel> items) {
     return ListView.builder(
       itemCount: items.length,
@@ -494,15 +479,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             subtitle: Text(
               '${formatCurrency(item.price)}'
               '${item.unit.isNotEmpty ? ' / ${item.unit}' : ''}'
-              // Hiển thị ghi chú nếu có
               '${hasNote ? '\nGhi chú: $note' : ''}',
               style: TextStyle(color: hasNote ? Colors.deepPurple : null),
             ),
-            isThreeLine: hasNote, // Tự động dãn ra nếu có ghi chú
+            isThreeLine: hasNote,
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Nút Ghi chú (chỉ hiện khi đã thêm vào giỏ)
                 if (quantityInCart > 0)
                   IconButton(
                     icon: Icon(
@@ -512,8 +495,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     tooltip: 'Thêm Ghi chú',
                     onPressed: () => _showAddNoteDialog(cartItem!),
                   ),
-
-                // Nút Thêm/Bớt
                 if (quantityInCart == 0)
                   IconButton(
                     icon: const Icon(
@@ -554,7 +535,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  // (Widget _buildCartSummaryBar giữ nguyên, không cần sửa)
   Widget _buildCartSummaryBar(bool isAddingMore) {
     if (_isProcessingOrder) {
       return Container(
@@ -616,7 +596,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
-            onPressed: _processOrder, // Nút luôn bật
+            onPressed: _processOrder,
           ),
         ],
       ),

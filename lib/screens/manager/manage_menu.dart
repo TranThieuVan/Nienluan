@@ -1,11 +1,10 @@
-// lib/screens/manager/menu_management_screen.dart (File mới)
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/manage_menu.dart]
 
 import 'package:flutter/material.dart';
 import 'package:myshop/models/menu_item.dart';
 import 'package:myshop/services/pocketbase_service.dart';
+import 'package:myshop/screens/manager/menu_item_form_screen.dart';
 import 'package:myshop/utils/currency_formatter.dart';
-// Import màn hình Form (sẽ tạo ở Bước 3)
-import 'menu_item_form_screen.dart';
 
 class ManageMenuScreen extends StatefulWidget {
   const ManageMenuScreen({super.key});
@@ -15,7 +14,7 @@ class ManageMenuScreen extends StatefulWidget {
 }
 
 class _ManageMenuScreenState extends State<ManageMenuScreen> {
-  final pbService = PocketBaseService.instance;
+  final PocketBaseService pbService = PocketBaseService.instance;
   late Future<List<MenuItemModel>> _menuFuture;
 
   @override
@@ -27,40 +26,29 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
   Future<void> _loadMenu() async {
     if (mounted) {
       setState(() {
-        _menuFuture = pbService.menuItems.getMenu();
+        // --- SỬA LỖI Ở ĐÂY ---
+        _menuFuture = pbService.menu.getMenu(); // Đổi từ menuItems -> menu
       });
     }
   }
 
-  // Hàm điều hướng đến Form (Sửa)
-  void _navigateToForm(MenuItemModel? item) {
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute(
-            builder: (context) => MenuItemFormScreen(menuItem: item),
-          ),
-        )
-        .then((didUpdate) {
-          if (didUpdate == true) {
-            _loadMenu(); // Tải lại nếu có cập nhật
-          }
-        });
-
-    // Tạm thời (trước khi có Bước 3)
-    // ScaffoldMessenger.of(context).showSnackBar(
-    //   SnackBar(
-    //     content: Text('Chuyển đến form cho: ${item?.name ?? 'Món mới'}'),
-    //   ),
-    // );
+  void _navigateToForm({MenuItemModel? item}) async {
+    final bool? result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => MenuItemFormScreen(menuItem: item),
+      ),
+    );
+    if (result == true && mounted) {
+      _loadMenu();
+    }
   }
 
-  // Hàm xử lý Xóa
   Future<void> _deleteItem(MenuItemModel item) async {
-    final confirmed = await showDialog<bool>(
+    final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Xác nhận Xóa'),
-        content: Text('Bạn có chắc muốn xóa món "${item.name}" không?'),
+        content: Text('Bạn có chắc chắn muốn xóa món "${item.name}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -68,33 +56,33 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Xóa'),
           ),
         ],
       ),
     );
 
-    if (confirmed == true) {
+    if (confirm == true && mounted) {
       try {
-        await pbService.menuItems.deleteMenuItem(item.id);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Đã xóa "${item.name}"'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        _loadMenu(); // Tải lại danh sách
+        // --- SỬA LỖI Ở ĐÂY ---
+        await pbService.menu.deleteMenuItem(
+          item.id,
+        ); // Đổi từ menuItems -> menu
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã xóa món "${item.name}"'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadMenu();
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Lỗi khi xóa: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi xóa: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -103,16 +91,9 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Quản lý Thực đơn"),
-        backgroundColor: Colors.green.shade600,
+        title: const Text('Quản lý Thực đơn'),
+        backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadMenu,
-            tooltip: 'Làm mới',
-          ),
-        ],
       ),
       body: FutureBuilder<List<MenuItemModel>>(
         future: _menuFuture,
@@ -120,92 +101,98 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-
           if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  'Lỗi tải thực đơn: ${snapshot.error}',
-                  style: const TextStyle(color: Colors.red),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
+            return Center(child: Text('Lỗi: ${snapshot.error}'));
           }
-
           final items = snapshot.data ?? [];
           if (items.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: _loadMenu,
-              child: ListView(
-                children: const [Center(child: Text('Chưa có món ăn nào.'))],
-              ),
-            );
+            return const Center(child: Text('Chưa có món nào trong thực đơn.'));
           }
+
+          final foodItems = items
+              .where((item) => item.category == MenuItemCategory.food)
+              .toList();
+          final drinkItems = items
+              .where((item) => item.category == MenuItemCategory.drink)
+              .toList();
 
           return RefreshIndicator(
             onRefresh: _loadMenu,
-            child: ListView.builder(
-              itemCount: items.length,
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final imageUrl = item.imageUrl;
-
-                return ListTile(
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(8.0),
-                    child: Container(
-                      width: 50,
-                      height: 50,
-                      color: Colors.grey.shade200,
-                      child: imageUrl != null && imageUrl.isNotEmpty
-                          ? Image.network(
-                              imageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Icon(
-                                    Icons.broken_image,
-                                    color: Colors.red,
-                                  ),
-                            )
-                          : const Icon(Icons.fastfood, color: Colors.blueGrey),
-                    ),
-                  ),
-                  title: Text(
-                    item.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: item.inStock ? Colors.black : Colors.grey,
-                      decoration: item.inStock
-                          ? TextDecoration.none
-                          : TextDecoration.lineThrough,
-                    ),
-                  ),
-                  subtitle: Text(
-                    '${formatCurrency(item.price)}/${item.unit} - (${item.displayCategory})',
-                  ),
-                  trailing: IconButton(
-                    icon: Icon(
-                      Icons.delete_outline,
-                      color: Colors.red.shade700,
-                    ),
-                    onPressed: () => _deleteItem(item),
-                  ),
-                  onTap: () => _navigateToForm(item), // Mở form Sửa
-                );
-              },
+            child: ListView(
+              children: [
+                _buildCategorySection(
+                  'Món ăn (${foodItems.length})',
+                  foodItems,
+                ),
+                _buildCategorySection(
+                  'Thức uống (${drinkItems.length})',
+                  drinkItems,
+                ),
+              ],
             ),
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _navigateToForm(null), // Mở form Thêm
-        backgroundColor: Colors.green,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _navigateToForm(),
+        backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('Thêm Món'),
+        child: const Icon(Icons.add),
       ),
+    );
+  }
+
+  Widget _buildCategorySection(String title, List<MenuItemModel> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+        ),
+        ListView.builder(
+          itemCount: items.length,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return ListTile(
+              leading: (item.imageUrl != null)
+                  ? Image.network(
+                      item.imageUrl!,
+                      width: 50,
+                      height: 50,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.broken_image, size: 50),
+                    )
+                  : const SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: Icon(Icons.fastfood, color: Colors.grey),
+                    ),
+              title: Text(item.name),
+              subtitle: Text(formatCurrency(item.price)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.blue),
+                    onPressed: () => _navigateToForm(item: item),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    onPressed: () => _deleteItem(item),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

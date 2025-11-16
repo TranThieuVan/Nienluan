@@ -12,9 +12,11 @@ import 'package:http/http.dart' as http;
 import 'notification_service.dart';
 import 'schedule_service.dart';
 // Import các service con
+import 'auth_service.dart'; // (Import này đã có)
 import 'user_service.dart';
 import 'menu_service.dart';
 import 'report_service.dart';
+import 'inventory_service.dart';
 // Import các view model
 import 'package:myshop/models/order_view.dart';
 
@@ -26,40 +28,43 @@ class PocketBaseService {
 
   final PocketBase pb;
   // --- Các service con ---
+  late final AuthService auth;
   late final UserService users;
-  late final MenuService menuItems;
+  late final MenuService menu;
   late final NotificationService notifications;
   late final ScheduleService schedules;
   late final ReportService reports;
+  late final InventoryService inventory;
 
   PocketBaseService._internal()
     // Lấy URL từ .env, fallback về localhost
     : pb = PocketBase(dotenv.env['POCKETBASE_URL'] ?? 'http://127.0.0.1:8091') {
-    // Khởi tạo service con, truyền instance `pb` hiện có
+    // Khởi tạo service con
+    auth = AuthService(pb); // (Giờ dòng này đã đúng)
     users = UserService(pb);
-    menuItems = MenuService(pb);
+    menu = MenuService(pb);
     notifications = NotificationService(pb);
     schedules = ScheduleService(pb);
     reports = ReportService(pb);
+    inventory = InventoryService(pb);
   }
   // --- Hết phần Singleton ---
 
-  // --- Chức Năng Xác Thực ---
-  Future<void> login(String email, String password) async {
-    try {
-      await pb.collection('users').authWithPassword(email, password);
-    } catch (e) {
-      throw Exception('Login failed: $e');
-    }
+  // --- Chức Năng Xác Thực (Chuyển qua AuthService) ---
+  // --- SỬA LỖI 1: SỬA Future<void> -> Future<bool> ---
+  Future<bool> login(String email, String password) async {
+    return auth.login(email, password);
   }
 
   String getRole() {
-    return pb.authStore.record?.getStringValue('role') ?? '';
+    return auth.getRole(); // (Giờ dòng này đã đúng)
   }
 
   void logout() {
-    pb.authStore.clear();
+    auth.logout();
   }
+
+  // (Phần còn lại của file giữ nguyên)
 
   // --- Chức Năng Quản Lý Bàn ---
   Future<List<TableModel>> getTables() async {
@@ -111,13 +116,12 @@ class PocketBaseService {
     }
   }
 
-  // --- SỬA HÀM NÀY (THÊM notes) ---
   Future<void> createOrderItemRecord({
     required String orderId,
     required String menuItemId,
     required int quantity,
     required double price,
-    String? notes, // <-- Tham số mới
+    String? notes,
   }) async {
     try {
       await pb
@@ -128,7 +132,7 @@ class PocketBaseService {
               'menu_item': menuItemId,
               'quantity': quantity,
               'price': price,
-              'notes': notes, // <-- Gửi notes lên
+              'notes': notes,
             },
           );
     } catch (e) {
@@ -139,7 +143,6 @@ class PocketBaseService {
 
   // --- CÁC HÀM CHO LOGIC BÀN ĐÃ CÓ KHÁCH ---
 
-  /// 1. Tìm hóa đơn (order) 'pending' của một bàn
   Future<OrderModel?> getPendingOrderForTable(String tableId) async {
     try {
       final record = await pb
@@ -156,8 +159,6 @@ class PocketBaseService {
     }
   }
 
-  // --- SỬA HÀM NÀY (ĐỌC notes) ---
-  /// 2. Lấy tất cả các món (order_items) của một hóa đơn
   Future<List<OrderItemView>> getOrderItemsWithDetails(String orderId) async {
     try {
       final records = await pb
@@ -165,9 +166,7 @@ class PocketBaseService {
           .getFullList(filter: 'order = "$orderId"', expand: 'menu_item');
 
       return records.map((record) {
-        // Đọc trường notes
         final notes = record.getStringValue('notes');
-
         final expandedData = record.get<List<RecordModel>>('expand.menu_item');
 
         if (expandedData.isEmpty) {
@@ -183,6 +182,7 @@ class PocketBaseService {
             'in_stock': false,
             'unit': '',
             'description': '',
+            'cost': 0.0,
           });
 
           final deletedMenuItem = MenuItemModel.fromRecord(fakeRecord, pb);
@@ -192,7 +192,7 @@ class PocketBaseService {
             quantity: record.getIntValue('quantity'),
             price: record.getDoubleValue('price'),
             menuItem: deletedMenuItem,
-            notes: notes, // <-- Gán notes
+            notes: notes,
           );
         }
 
@@ -204,7 +204,7 @@ class PocketBaseService {
           quantity: record.getIntValue('quantity'),
           price: record.getDoubleValue('price'),
           menuItem: menuItem,
-          notes: notes, // <-- Gán notes
+          notes: notes,
         );
       }).toList();
     } catch (e) {
@@ -213,11 +213,9 @@ class PocketBaseService {
     }
   }
 
-  /// 3. Xử lý "Thanh toán"
   Future<void> checkoutOrder(String orderId, String tableId) async {
     try {
       await pb.collection('orders').update(orderId, body: {'status': 'paid'});
-
       await pb.collection('tables').update(tableId, body: {'status': 'empty'});
     } catch (e) {
       print('Error during checkout: $e');
@@ -225,7 +223,6 @@ class PocketBaseService {
     }
   }
 
-  /// 4. Cập nhật tổng tiền cho một hóa đơn đã tồn tại
   Future<void> updateOrderTotalPrice(
     String orderId,
     double newTotalPrice,
@@ -244,7 +241,6 @@ class PocketBaseService {
     return value.replaceAll("'", "''");
   }
 
-  /// Lấy danh sách các hóa đơn đã hoàn thành ('paid')
   Future<List<OrderViewModel>> getCompletedOrders({
     DateTime? selectedDate,
     String? searchTerm,

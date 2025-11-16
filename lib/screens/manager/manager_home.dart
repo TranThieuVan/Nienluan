@@ -1,187 +1,177 @@
+// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/manager_home.dart]
+
 import 'package:flutter/material.dart';
-import 'package:myshop/services/pocketbase_service.dart';
 import 'package:myshop/screens/auth/login_screen.dart';
-import 'package:myshop/screens/manager/employee_management_screen.dart';
-
-// --- BƯỚC 1: THÊM IMPORT CHO CÁC MÀN HÌNH THẬT ---
+import 'package:myshop/services/pocketbase_service.dart';
 import 'package:myshop/screens/manager/manage_menu.dart';
-import 'package:myshop/screens/manager/reports.dart'; // (Giả định bạn cũng có file này)
-import 'package:myshop/screens/manager/notification_management_screen.dart';
+import 'package:myshop/screens/manager/employee_management_screen.dart';
 import 'package:myshop/screens/manager/schedule_management_screen.dart';
-
-// Lớp dữ liệu (Giữ nguyên)
-class _ManagerAction {
-  final String title;
-  final IconData icon;
-  final Widget screen;
-  final Color color;
-
-  _ManagerAction({
-    required this.title,
-    required this.icon,
-    required this.screen,
-    required this.color,
-  });
-}
+import 'package:myshop/screens/manager/notification_management_screen.dart';
+import 'package:myshop/screens/manager/reports.dart';
+import 'package:myshop/screens/order/completed_orders_screen.dart';
+import 'package:myshop/screens/manager/inventory_management_screen.dart';
 
 class ManagerHome extends StatelessWidget {
   const ManagerHome({super.key});
 
   void _logout(BuildContext context) {
-    PocketBaseService().logout();
+    PocketBaseService.instance.logout();
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (context) => const LoginScreen()),
       (Route<dynamic> route) => false,
     );
   }
 
-  void _navigateTo(BuildContext context, Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (context) => screen));
-  }
-
-  // Danh sách các chức năng chính của Quản lý
-  List<_ManagerAction> _getActions(BuildContext context) {
-    return [
-      _ManagerAction(
-        title: "Nhân viên",
-        icon: Icons.people_alt,
-        color: Colors.indigo.shade600,
-        screen: const EmployeeManagementScreen(),
-      ),
-      _ManagerAction(
-        title: "Thực đơn",
-        icon: Icons.restaurant_menu,
-        color: Colors.green.shade600,
-        // --- BƯỚC 2: SỬA LẠI ĐỂ TRỎ ĐẾN MÀN HÌNH THẬT ---
-        screen: ManageMenuScreen(), // <-- ĐÃ SỬA
-      ),
-      _ManagerAction(
-        title: "Thống kê",
-        icon: Icons.bar_chart,
-        color: Colors.amber.shade700,
-        // --- (Tùy chọn) Sửa luôn màn hình Báo cáo ---
-        screen: ReportsScreen(), // <-- ĐÃ SỬA
-      ),
-      _ManagerAction(
-        title: "Quản lý Bàn",
-        icon: Icons.table_bar,
-        color: Colors.blueGrey.shade600,
-        screen: const Text("Tạm thời chưa có màn hình chi tiết"),
-      ),
-      // --- THÊM CARD MỚI NÀY ---
-      _ManagerAction(
-        title: "Thông báo",
-        icon: Icons.campaign,
-        color: Colors.purple.shade600,
-        screen: const NotificationManagementScreen(),
-      ),
-      _ManagerAction(
-        title: "Lịch làm việc",
-        icon: Icons.calendar_month_outlined,
-        color: Colors.teal.shade600,
-        screen: const ScheduleManagementScreen(), // Màn hình Hub (Bước 3)
-      ),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
-    final actions = _getActions(context);
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Quản lý Hệ thống"),
-        backgroundColor: Colors.indigo.shade700,
+        title: const Text('Trang Quản lý'),
+        backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.exit_to_app, color: Colors.white),
-            tooltip: 'Đăng xuất Quản lý',
+            icon: const Icon(Icons.logout),
             onPressed: () => _logout(context),
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: GridView.count(
+        crossAxisCount: 2,
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header chào mừng (Giữ nguyên)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Chào mừng Quản lý!",
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.indigo,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    "Dashboard quản lý các chức năng chính của hệ thống.",
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
-                  ),
-                ],
-              ),
-            ),
+        childAspectRatio: 1.1,
+        crossAxisSpacing: 16.0,
+        mainAxisSpacing: 16.0,
+        children: [
+          _buildDashboardButton(
+            context,
+            icon: Icons.assignment,
+            label: 'Quản lý Thực đơn',
+            color: Colors.orange,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const ManageMenuScreen(),
+                ),
+              );
+            },
+          ),
+          _buildDashboardButton(
+            context,
+            icon: Icons.people,
+            label: 'Quản lý Nhân viên',
+            color: Colors.indigo,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const EmployeeManagementScreen(),
+                ),
+              );
+            },
+          ),
+          _buildDashboardButton(
+            context,
+            icon: Icons.calendar_month,
+            label: 'Quản lý Lịch làm',
+            color: Colors.teal,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const ScheduleManagementScreen(),
+                ),
+              );
+            },
+          ),
 
-            // Grid View (Giữ nguyên)
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 1.5,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
+          _buildDashboardButton(
+            context,
+            icon: Icons.warehouse,
+            label: 'Quản lý Kho',
+            color: Colors.brown,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const InventoryManagementScreen(),
+                ),
+              );
+            },
+          ),
+
+          _buildDashboardButton(
+            context,
+            icon: Icons.bar_chart,
+            label: 'Báo cáo',
+            // --- SỬA LỖI: ĐỔI TỪ AMBER SANG ORANGE ---
+            color: Colors.orange,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const ReportsScreen()),
+              );
+            },
+          ),
+          _buildDashboardButton(
+            context,
+            icon: Icons.receipt_long,
+            label: 'Lịch sử Hóa đơn',
+            color: Colors.blueGrey,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const CompletedOrdersScreen(),
+                ),
+              );
+            },
+          ),
+          _buildDashboardButton(
+            context,
+            icon: Icons.notifications,
+            label: 'Gửi Thông báo',
+            color: Colors.red,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const NotificationManagementScreen(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- SỬA LỖI: ĐỔI 'Color' THÀNH 'MaterialColor' ---
+  Widget _buildDashboardButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required MaterialColor color, // <-- Sửa ở đây
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 4.0,
+      color: color.shade50, // <-- Dùng shade
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 50.0, color: color.shade700), // <-- Dùng shade
+            const SizedBox(height: 16.0),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16.0,
+                fontWeight: FontWeight.bold,
+                color: color.shade900, // <-- Dùng shade
               ),
-              itemCount: actions.length,
-              itemBuilder: (context, index) {
-                final action = actions[index];
-                return _buildActionCard(context, action);
-              },
             ),
-            const SizedBox(height: 50.0),
           ],
         ),
       ),
     );
   }
-
-  // (Hàm _buildActionCard giữ nguyên)
-  Widget _buildActionCard(BuildContext context, _ManagerAction action) {
-    return InkWell(
-      onTap: () => _navigateTo(context, action.screen),
-      child: Card(
-        color: action.color,
-        elevation: 6,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(action.icon, size: 40, color: Colors.white),
-              Text(
-                action.title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
-
-// --- BƯỚC 3: XÓA CÁC CLASS PLACEHOLDER CŨ ---
-// (Không còn cần MenuItemManagementScreen và ReportsScreen ở đây nữa)
