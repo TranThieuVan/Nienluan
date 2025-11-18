@@ -4,7 +4,8 @@ import 'package:pocketbase/pocketbase.dart';
 import 'package:myshop/models/order.dart';
 import 'package:myshop/models/menu_item.dart';
 import 'package:myshop/models/best_seller_item.dart';
-import 'package:collection/collection.dart'; // <-- Thư viện mới
+import 'package:collection/collection.dart';
+import 'package:myshop/models/spoilage_log.dart'; // <-- Import model mới
 
 class ReportService {
   final PocketBase pb;
@@ -15,18 +16,13 @@ class ReportService {
   Future<List<OrderModel>> getCompletedOrdersForMonth(
     DateTime selectedMonth,
   ) async {
-    // 1. Tính ngày bắt đầu (luôn là ngày 1 của tháng)
     final startDate = DateTime(selectedMonth.year, selectedMonth.month, 1);
-
-    // 2. Tính ngày kết thúc
     final now = DateTime.now();
     DateTime endDate;
 
     if (selectedMonth.year == now.year && selectedMonth.month == now.month) {
-      // Nếu là tháng hiện tại, lấy đến ngày/giờ hiện tại
       endDate = now;
     } else {
-      // Nếu là tháng cũ, lấy đến 23:59:59 của ngày cuối tháng
       endDate = DateTime(
         selectedMonth.year,
         selectedMonth.month + 1,
@@ -53,84 +49,136 @@ class ReportService {
     }
   }
 
-  // --- HÀM MỚI ĐỂ LẤY TOP MÓN BÁN CHẠY ---
-  Future<List<BestSellerItem>> getBestSellingItems(
-    DateTime selectedMonth,
-  ) async {
-    // 1. Lấy tất cả các đơn đã thanh toán trong tháng
+  /// [MỚI] Lấy danh sách thô tất cả món đã bán để tính lợi nhuận theo ngày
+  Future<List<RecordModel>> getRawSoldItems(DateTime selectedMonth) async {
+    // 1. Lấy danh sách đơn đã thanh toán
     final paidOrders = await getCompletedOrdersForMonth(selectedMonth);
-    if (paidOrders.isEmpty) {
-      return []; // Không có đơn nào, không có món nào
-    }
+    if (paidOrders.isEmpty) return [];
 
-    // 2. Tạo filter để lấy TẤT CẢ order_items từ các đơn trên
-    // Ví dụ: (order.id = 'id1' || order.id = 'id2' || ...)
+    // 2. Tạo filter lấy order_items thuộc các đơn này
     final orderIdFilter =
         '(${paidOrders.map((o) => "order.id = '${o.id}'").join(' || ')})';
 
     try {
-      // 3. Lấy tất cả order_items, và "expand" thông tin menu_item
-      final allItems = await pb
+      // 3. Lấy dữ liệu và expand menu_item để lấy 'cost'
+      // Sắp xếp theo thời gian tạo để vẽ biểu đồ đúng thứ tự
+      final items = await pb
           .collection('order_items')
-          .getFullList(filter: orderIdFilter, expand: 'menu_item');
+          .getFullList(
+            filter: orderIdFilter,
+            expand: 'menu_item',
+            sort: 'created',
+          );
+      return items;
+    } catch (e) {
+      print('ReportService - Error fetching raw items: $e');
+      return [];
+    }
+  }
 
-      // 4. Xử lý dữ liệu (Group by): Nhóm các món giống nhau lại
-      final grouped = groupBy(allItems, (RecordModel item) {
-        // Lấy ID của menu_item
-        return item.getStringValue('menu_item');
-      });
+  /// Lấy Top món bán chạy (Giữ nguyên logic cũ nhưng tái sử dụng hàm trên nếu muốn tối ưu)
+  Future<List<BestSellerItem>> getBestSellingItems(
+    DateTime selectedMonth,
+  ) async {
+    // Tận dụng hàm mới để tránh viết lại code filter
+    // Lưu ý: Hàm này trả về RecordModel, cần xử lý lại một chút
+    List<RecordModel> allItems;
+    try {
+      allItems = await getRawSoldItems(selectedMonth);
+    } catch (e) {
+      return [];
+    }
 
-      final List<BestSellerItem> bestSellers = [];
+    if (allItems.isEmpty) return [];
 
-      // 5. Cộng dồn số lượng
-      for (var entry in grouped.entries) {
-        int totalQuantity = 0;
-        MenuItemModel? menuItem; // Chỉ cần lấy 1
+    final grouped = groupBy(allItems, (RecordModel item) {
+      return item.getStringValue('menu_item');
+    });
 
-        for (var itemRecord in entry.value) {
-          totalQuantity += itemRecord.getIntValue('quantity');
+    final List<BestSellerItem> bestSellers = [];
 
-          if (menuItem == null && itemRecord.expand.containsKey('menu_item')) {
-            final expandedData = itemRecord.get<List<RecordModel>>(
-              'expand.menu_item',
-            );
-            if (expandedData.isNotEmpty) {
-              menuItem = MenuItemModel.fromRecord(expandedData.first, pb);
-            }
+    for (var entry in grouped.entries) {
+      int totalQuantity = 0;
+      MenuItemModel? menuItem;
+
+      for (var itemRecord in entry.value) {
+        totalQuantity += itemRecord.getIntValue('quantity');
+
+        if (menuItem == null && itemRecord.expand.containsKey('menu_item')) {
+          final expandedData = itemRecord.get<List<RecordModel>>(
+            'expand.menu_item',
+          );
+          if (expandedData.isNotEmpty) {
+            menuItem = MenuItemModel.fromRecord(expandedData.first, pb);
           }
         }
+      }
 
-        // Nếu (vì lý do nào đó) món đã bị xóa
-        if (menuItem == null) {
-          final firstItem = entry.value.first;
-          menuItem = MenuItemModel.fromRecord(
-            RecordModel({
-              'id': firstItem.getStringValue('menu_item'),
-              'collectionId': 'menu_items',
-              'created': '',
-              'updated': '',
-              'name': 'Món đã bị xóa',
-              'price': firstItem.getDoubleValue('price'),
-              'category': 'food',
-              'image': '',
-              'in_stock': false,
-              'unit': 'N/A',
-            }),
-            pb,
-          );
-        }
-
-        bestSellers.add(
-          BestSellerItem(menuItem: menuItem, totalQuantity: totalQuantity),
+      if (menuItem == null) {
+        final firstItem = entry.value.first;
+        menuItem = MenuItemModel.fromRecord(
+          RecordModel({
+            'id': firstItem.getStringValue('menu_item'),
+            'collectionId': 'menu_items',
+            'created': '',
+            'updated': '',
+            'name': 'Món đã bị xóa',
+            'price': firstItem.getDoubleValue('price'),
+            'category': 'food',
+            'image': '',
+            'in_stock': false,
+            'unit': 'N/A',
+            'cost': 0.0,
+          }),
+          pb,
         );
       }
 
-      // 6. Sắp xếp
-      bestSellers.sort((a, b) => b.totalQuantity.compareTo(a.totalQuantity));
-      return bestSellers;
+      bestSellers.add(
+        BestSellerItem(menuItem: menuItem, totalQuantity: totalQuantity),
+      );
+    }
+
+    bestSellers.sort((a, b) => b.totalQuantity.compareTo(a.totalQuantity));
+    return bestSellers;
+  }
+
+  // --- TÍNH TỔNG CHI PHÍ HAO HỤT TRONG THÁNG (DÙNG MODEL) ---
+  Future<double> getMonthlySpoilageCost(DateTime selectedMonth) async {
+    final startDate = DateTime(selectedMonth.year, selectedMonth.month, 1);
+    final endDate = DateTime(
+      selectedMonth.year,
+      selectedMonth.month + 1,
+      0,
+      23,
+      59,
+      59,
+    );
+
+    final startISO = startDate.toUtc().toIso8601String();
+    final endISO = endDate.toUtc().toIso8601String();
+
+    try {
+      // Lấy dữ liệu từ bảng spoilage_logs
+      final records = await pb
+          .collection('spoilage_logs')
+          .getFullList(
+            filter: 'created >= "$startISO" && created <= "$endISO"',
+          );
+
+      // Chuyển đổi sang Model (Code chuyên nghiệp hơn)
+      final logs = records.map((r) => SpoilageLog.fromRecord(r)).toList();
+
+      // Tính tổng tiền mất
+      double totalLoss = 0;
+      for (var log in logs) {
+        totalLoss +=
+            log.totalLoss; // Dùng thuộc tính của class, không sợ gõ sai string
+      }
+      return totalLoss;
     } catch (e) {
-      print('ReportService - Error fetching best sellers: $e');
-      throw Exception('Lỗi tải top món bán chạy: $e');
+      print('Lỗi tính phí hao hụt: $e');
+      return 0.0;
     }
   }
 }

@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/order/order_detail_screen.dart]
-
 import 'package:flutter/material.dart';
 import 'package:myshop/models/table.dart';
 import 'package:myshop/models/menu_item.dart';
@@ -43,9 +41,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   @override
   void initState() {
     super.initState();
-    // --- SỬA LỖI Ở ĐÂY ---
-    _menuFuture = pbService.menu.getMenu(); // Đổi từ menuItems -> menu
-    // --- KẾT THÚC SỬA LỖI ---
+    _menuFuture = pbService.menu.getMenu();
     _searchController.addListener(_onSearchChanged);
 
     if (widget.existingOrder != null) {
@@ -109,8 +105,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     });
   }
 
-  // --- Logic Giỏ Hàng ---
   void _incrementItem(MenuItemModel item) {
+    if (!item.inStock) return; // Chặn nếu hết hàng
     setState(() {
       if (_cart.containsKey(item.id)) {
         _cart[item.id]!.quantity++;
@@ -144,7 +140,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     });
   }
 
-  // --- HÀM XỬ LÝ GỬI ---
   Future<void> _processOrder() async {
     if (_cart.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -162,12 +157,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     try {
       final bool isAddingMore = widget.existingOrder != null;
       String orderId;
-      double newTotalPrice = _totalPrice;
 
       if (isAddingMore) {
-        // --- Logic GỌI THÊM ---
         orderId = widget.existingOrder!.id;
-
         final existingItemViews = await pbService.getOrderItemsWithDetails(
           orderId,
         );
@@ -176,12 +168,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         };
 
         List<Future> updateFutures = [];
-
         for (final cartItem in _cart.values) {
-          if (existingItemsMap.containsKey(cartItem.item.id)) {
-            // Món đã có -> Cần UPDATE
-          } else {
-            // Món mới -> TẠO MỚI
+          if (!existingItemsMap.containsKey(cartItem.item.id)) {
             updateFutures.add(
               pbService.createOrderItemRecord(
                 orderId: orderId,
@@ -195,16 +183,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         }
         await Future.wait(updateFutures);
 
-        // Cập nhật tổng tiền (tính lại toàn bộ)
         final allItems = await pbService.getOrderItemsWithDetails(orderId);
         final newTotal = allItems.fold<double>(
           0.0,
           (sum, item) => sum + item.subtotal,
         );
-
         await pbService.updateOrderTotalPrice(orderId, newTotal);
       } else {
-        // --- Logic TẠO MỚI ---
         orderId = await pbService.createOrderRecord(
           widget.table.id,
           _totalPrice,
@@ -228,7 +213,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      Navigator.of(context).pop(true); // Trả về true để refresh
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -246,10 +231,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
-  // --- HÀM MỚI: HIỂN THỊ DIALOG GHI CHÚ ---
   Future<void> _showAddNoteDialog(CartItem cartItem) async {
     final noteController = TextEditingController(text: cartItem.notes);
-
     final newNote = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -265,19 +248,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(null), // Hủy
+            onPressed: () => Navigator.of(context).pop(null),
             child: const Text('Hủy'),
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.of(context).pop(noteController.text); // Lưu
+              Navigator.of(context).pop(noteController.text);
             },
             child: const Text('Lưu'),
           ),
         ],
       ),
     );
-
     if (newNote != null) {
       setState(() {
         cartItem.notes = newNote;
@@ -285,7 +267,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
-  // --- Giao diện (Build) ---
   @override
   Widget build(BuildContext context) {
     final bool isAddingMore = widget.existingOrder != null;
@@ -309,16 +290,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _buildSearchBar(),
           if (_isLoadingExistingCart)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20.0),
-              child: Center(
-                child: Column(
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 8),
-                    Text("Đang tải các món đã gọi..."),
-                  ],
-                ),
-              ),
+              padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator(),
             ),
           Expanded(
             child: FutureBuilder<List<MenuItemModel>>(
@@ -328,45 +301,26 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     !_isLoadingExistingCart) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text(
-                      'Lỗi tải Menu: ${snapshot.error}',
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                  );
-                }
-                if (snapshot.connectionState == ConnectionState.done &&
-                    !_isLoadingExistingCart) {
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const Center(
-                      child: Text('Không tìm thấy món ăn nào trong thực đơn.'),
-                    );
-                  }
+                if (snapshot.hasError)
+                  return Center(child: Text('Lỗi: ${snapshot.error}'));
 
-                  // Lọc
-                  final menuItems = snapshot.data!;
-                  final List<MenuItemModel> filteredItems;
-                  if (_searchQuery.isEmpty) {
-                    filteredItems = menuItems;
-                  } else {
-                    filteredItems = menuItems
-                        .where(
-                          (item) => item.name.toLowerCase().contains(
-                            _searchQuery.toLowerCase(),
-                          ),
-                        )
-                        .toList();
-                  }
+                if (snapshot.connectionState == ConnectionState.done) {
+                  final menuItems = snapshot.data ?? [];
+                  if (menuItems.isEmpty)
+                    return const Center(child: Text('Thực đơn trống.'));
 
-                  if (filteredItems.isEmpty && _searchQuery.isNotEmpty) {
-                    return Center(
-                      child: Text(
-                        'Không tìm thấy món nào khớp với "${_searchQuery}".',
-                        textAlign: TextAlign.center,
-                      ),
-                    );
-                  }
+                  final filteredItems = _searchQuery.isEmpty
+                      ? menuItems
+                      : menuItems
+                            .where(
+                              (item) => item.name.toLowerCase().contains(
+                                _searchQuery.toLowerCase(),
+                              ),
+                            )
+                            .toList();
+
+                  if (filteredItems.isEmpty)
+                    return const Center(child: Text('Không tìm thấy món.'));
 
                   final foodItems = filteredItems
                       .where((item) => item.category == MenuItemCategory.food)
@@ -378,11 +332,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   return ListView(
                     padding: const EdgeInsets.all(8.0),
                     children: [
-                      _buildCategoryHeader("Món Ăn (${foodItems.length})"),
-                      _buildMenuListView(foodItems),
-                      const SizedBox(height: 16),
-                      _buildCategoryHeader("Thức Uống (${drinkItems.length})"),
-                      _buildMenuListView(drinkItems),
+                      if (foodItems.isNotEmpty)
+                        _buildCategoryHeader("Món Ăn (${foodItems.length})"),
+                      if (foodItems.isNotEmpty) _buildMenuListView(foodItems),
+                      if (drinkItems.isNotEmpty)
+                        _buildCategoryHeader(
+                          "Thức Uống (${drinkItems.length})",
+                        ),
+                      if (drinkItems.isNotEmpty) _buildMenuListView(drinkItems),
                     ],
                   );
                 }
@@ -396,23 +353,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  // --- Các Widget con (Helpers) ---
-
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: TextField(
         controller: _searchController,
         decoration: InputDecoration(
-          labelText: 'Tìm kiếm tên món ăn...',
+          labelText: 'Tìm kiếm món...',
           prefixIcon: const Icon(Icons.search),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12.0)),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear),
-                  onPressed: () {
-                    _searchController.clear();
-                  },
+                  onPressed: () => _searchController.clear(),
                 )
               : null,
         ),
@@ -446,89 +399,122 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         final String? note = cartItem?.notes;
         final bool hasNote = note != null && note.isNotEmpty;
 
+        // -- LOGIC HẾT HÀNG --
+        final bool isOutOfStock = !item.inStock;
+
         return Card(
           elevation: 2.0,
           margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+          color: isOutOfStock
+              ? Colors.grey.shade100
+              : Colors.white, // Nền xám nếu hết hàng
           child: ListTile(
-            leading: (item.imageUrl != null)
-                ? Image.network(
-                    item.imageUrl!,
-                    width: 50,
-                    height: 50,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.broken_image, size: 50),
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return const SizedBox(
-                        width: 50,
-                        height: 50,
-                        child: CircularProgressIndicator(),
-                      );
-                    },
-                  )
-                : const SizedBox(
-                    width: 50,
-                    height: 50,
-                    child: Icon(Icons.fastfood, color: Colors.grey),
-                  ),
-            title: Text(
-              item.name,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            leading: Opacity(
+              opacity: isOutOfStock ? 0.5 : 1.0,
+              child: (item.imageUrl != null)
+                  ? Image.network(
+                      item.imageUrl!,
+                      width: 50,
+                      height: 50,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.broken_image, size: 50),
+                    )
+                  : const SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: Icon(Icons.fastfood, color: Colors.grey),
+                    ),
             ),
-            subtitle: Text(
-              '${formatCurrency(item.price)}'
-              '${item.unit.isNotEmpty ? ' / ${item.unit}' : ''}'
-              '${hasNote ? '\nGhi chú: $note' : ''}',
-              style: TextStyle(color: hasNote ? Colors.deepPurple : null),
-            ),
-            isThreeLine: hasNote,
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
+            title: Row(
               children: [
-                if (quantityInCart > 0)
-                  IconButton(
-                    icon: Icon(
-                      Icons.edit_note,
-                      color: hasNote ? Colors.deepPurple : Colors.grey,
+                Expanded(
+                  child: Text(
+                    item.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      // Gạch ngang tên nếu hết hàng
+                      decoration: isOutOfStock
+                          ? TextDecoration.lineThrough
+                          : null,
+                      color: isOutOfStock ? Colors.grey : Colors.black,
                     ),
-                    tooltip: 'Thêm Ghi chú',
-                    onPressed: () => _showAddNoteDialog(cartItem!),
                   ),
-                if (quantityInCart == 0)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.add_shopping_cart,
-                      color: Colors.green,
+                ),
+                if (isOutOfStock)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
                     ),
-                    tooltip: 'Thêm vào giỏ',
-                    onPressed: () => _incrementItem(item),
-                  )
-                else
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.remove, color: Colors.red.shade700),
-                        tooltip: 'Bớt',
-                        onPressed: () => _decrementItem(item),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      "HẾT HÀNG",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
                       ),
-                      Text(
-                        '$quantityInCart',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.add, color: Colors.green),
-                        tooltip: 'Thêm',
-                        onPressed: () => _incrementItem(item),
-                      ),
-                    ],
+                    ),
                   ),
               ],
             ),
+            subtitle: Text(
+              '${formatCurrency(item.price)}${item.unit.isNotEmpty ? ' / ${item.unit}' : ''}${hasNote ? '\nGhi chú: $note' : ''}',
+              style: TextStyle(color: hasNote ? Colors.deepPurple : null),
+            ),
+            isThreeLine: hasNote,
+            trailing: isOutOfStock
+                ? const SizedBox(width: 1) // Ẩn nút nếu hết hàng
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (quantityInCart > 0)
+                        IconButton(
+                          icon: Icon(
+                            Icons.edit_note,
+                            color: hasNote ? Colors.deepPurple : Colors.grey,
+                          ),
+                          onPressed: () => _showAddNoteDialog(cartItem!),
+                        ),
+                      if (quantityInCart == 0)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.add_shopping_cart,
+                            color: Colors.green,
+                          ),
+                          onPressed: () => _incrementItem(item),
+                        )
+                      else
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                Icons.remove,
+                                color: Colors.red.shade700,
+                              ),
+                              onPressed: () => _decrementItem(item),
+                            ),
+                            Text(
+                              '$quantityInCart',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add, color: Colors.green),
+                              onPressed: () => _incrementItem(item),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
           ),
         );
       },
@@ -536,23 +522,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Widget _buildCartSummaryBar(bool isAddingMore) {
-    if (_isProcessingOrder) {
+    if (_isProcessingOrder)
       return Container(
-        padding: const EdgeInsets.all(24.0),
-        color: Colors.grey[200],
+        padding: const EdgeInsets.all(24),
         child: const Center(child: CircularProgressIndicator()),
       );
-    }
-
-    if (_cart.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    if (_cart.isEmpty) return const SizedBox.shrink();
 
     final int totalItems = _cart.values.fold(
       0,
       (sum, item) => sum + item.quantity,
     );
-
     final String buttonText = isAddingMore ? 'OK' : 'OK (Tạo Hóa Đơn)';
     final Color buttonColor = isAddingMore ? Colors.blue : Colors.green;
 

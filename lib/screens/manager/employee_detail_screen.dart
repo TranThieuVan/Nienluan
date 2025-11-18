@@ -5,6 +5,7 @@ import 'package:myshop/models/staff_profile.dart';
 import 'package:myshop/widgets/manager/edit_employee_dialog.dart';
 import 'package:myshop/services/pocketbase_service.dart'; // Cần cho hàm callback
 import 'package:myshop/models/staff_role.dart'; // Cần cho hàm callback
+import 'package:myshop/utils/currency_formatter.dart'; // <-- Import mới để format lương
 
 class EmployeeDetailScreen extends StatefulWidget {
   final StaffProfile profile;
@@ -65,7 +66,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
                     newPassword: newPassword,
                   );
 
-                  // 2. Tải lại thông tin mới từ DB (SỬA LỖI)
+                  // 2. Tải lại thông tin mới từ DB
                   final pbService = PocketBaseService.instance;
                   // Dùng hàm getStaffProfile mới, luôn hoạt động
                   final updatedProfile = await pbService.users.getStaffProfile(
@@ -170,20 +171,16 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
             _InfoRow(
               icon: Icons.attach_money,
               label: 'Lương',
-              value: '${_currentProfile.salary.toStringAsFixed(0)} VND',
+              // SỬA Ở ĐÂY: Dùng formatCurrency thay vì toStringAsFixed
+              value: formatCurrency(_currentProfile.salary),
             ),
-            _InfoRow(
-              icon: Icons.perm_identity,
-              label: 'Profile ID',
-              value: _currentProfile.id,
-            ),
+            // ĐÃ XÓA DÒNG PROFILE ID Ở ĐÂY
           ],
         ),
       ),
     );
   }
 
-  // --- HÀM ĐÃ SỬA LỖI (Xóa workType) ---
   Widget _buildScheduleCard() {
     // Lọc ra những ngày có ca làm
     final List<Widget> scheduleRows = [];
@@ -216,8 +213,6 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const Divider(),
-
-            // --- DÒNG workType ĐÃ BỊ XÓA ---
 
             // Nếu không có lịch cố định nào
             if (scheduleRows.isEmpty)

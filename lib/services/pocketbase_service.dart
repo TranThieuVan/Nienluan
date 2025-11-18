@@ -221,10 +221,10 @@ class PocketBaseService {
 
       // 3. (MỚI) Tự động trừ kho
       // Lấy danh sách các món trong đơn hàng vừa thanh toán
-      // final itemsInOrder = await getOrderItemsWithDetails(orderId);
+      final itemsInOrder = await getOrderItemsWithDetails(orderId);
 
       // --- SỬA LỖI: TẠM THỜI ẨN DÒNG NÀY ĐI ---
-      // inventory.deductStockForOrder(itemsInOrder);
+      inventory.deductStockForOrder(itemsInOrder);
       // --- KẾT THÚC SỬA LỖI ---
     } catch (e) {
       print('Error during checkout: $e');

@@ -1,4 +1,4 @@
-// [FILE MỚI: lib/screens/manager/salary_detail_screen.dart]
+// [FILE: lib/screens/manager/salary_detail_screen.dart]
 
 import 'package:flutter/material.dart';
 import 'package:myshop/models/staff_profile.dart';
@@ -29,10 +29,15 @@ class SalaryDetailScreen extends StatelessWidget {
         foregroundColor: Colors.white,
       ),
       body: ListView.separated(
+        padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: activeProfiles.length,
         itemBuilder: (context, index) {
           final profile = activeProfiles[index];
           return ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
             leading: CircleAvatar(
               backgroundColor: Colors.indigo.shade100,
               child: Text(
@@ -43,13 +48,19 @@ class SalaryDetailScreen extends StatelessWidget {
                 ),
               ),
             ),
-            title: Text(profile.name),
-            subtitle: Text(profile.role.display),
+            title: Text(
+              profile.name,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              profile.role.display,
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
             trailing: Text(
               formatCurrency(profile.salary),
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
-                fontSize: 16,
+                fontSize: 14, // Giảm font để hiển thị số dài
                 color: Colors.indigo,
               ),
             ),
@@ -66,15 +77,25 @@ class SalaryDetailScreen extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Tổng chi phí lương (tháng):',
-                style: Theme.of(context).textTheme.titleMedium,
+              Flexible(
+                child: Text(
+                  'Tổng chi phí lương (tháng):',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontSize: 14),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              Text(
-                formatCurrency(totalPayroll),
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.indigo,
-                  fontWeight: FontWeight.bold,
+              Flexible(
+                child: Text(
+                  formatCurrency(totalPayroll),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.indigo,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16, // Giảm font để hiển thị số lớn
+                  ),
+                  textAlign: TextAlign.end,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
