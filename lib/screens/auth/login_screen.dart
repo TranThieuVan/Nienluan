@@ -1,7 +1,11 @@
+// [CẬP NHẬT FILE: lib/screens/auth/login_screen.dart]
+
 import 'package:flutter/material.dart';
+// Import các màn hình và service cần thiết
 import '../../services/pocketbase_service.dart';
 import '../employee/employee_home.dart';
 import '../manager/manager_home.dart';
+// Lưu ý: Đã xóa import AppRoutes vì bạn chuyển sang dùng MaterialPageRoute
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,6 +15,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  // Biến điều khiển
+  final _formKey = GlobalKey<FormState>(); // Thêm form key cho validation
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final pbService = PocketBaseService.instance;
@@ -41,27 +47,23 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    if (emailController.text.isEmpty || passwordController.text.isEmpty) {
-      _showSnackbar('Vui lòng nhập đầy đủ Email và Mật khẩu.', isError: true);
+    // Sử dụng formKey để validate input
+    if (!_formKey.currentState!.validate()) {
+      _showSnackbar('Vui lòng nhập đầy đủ và đúng định dạng.', isError: true);
       return;
     }
 
-    // 1. Bắt đầu loading
     setState(() => isLoading = true);
 
     try {
-      // 2. Gọi hàm login
       await pbService.login(emailController.text, passwordController.text);
 
-      // 3. Lấy role và điều hướng (ĐÃ XÓA SNACKBAR THÀNH CÔNG)
       final role = pbService.getRole();
 
       if (role == 'employee') {
         _navigateTo(const EmployeeHome());
-        // ĐÃ XÓA SNACKBAR Ở ĐÂY
       } else if (role == 'manager') {
         _navigateTo(const ManagerHome());
-        // ĐÃ XÓA SNACKBAR Ở ĐÂY
       } else {
         pbService.logout();
         _showSnackbar(
@@ -70,13 +72,11 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
-      // 4. Xử lý lỗi (giữ nguyên, đã rất tốt)
       _showSnackbar(
         'Đăng nhập thất bại: Email hoặc mật khẩu không chính xác.',
         isError: true,
       );
     } finally {
-      // 5. Tắt loading (ĐÃ XÓA FUTURE.DELAYED)
       if (mounted) {
         setState(() => isLoading = false);
       }
@@ -86,59 +86,97 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Login"),
-        backgroundColor: Theme.of(context).primaryColor,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Email Input
-            TextField(
-              controller: emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: "Email",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.email),
-              ),
-            ),
-            const SizedBox(height: 16),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // --- VỊ TRÍ APP ICON ---
+              Image.asset('assets/icon/vanbeef.png', height: 200),
+              const SizedBox(height: 32),
 
-            // Password Input
-            TextField(
-              controller: passwordController,
-              decoration: const InputDecoration(
-                labelText: "Password",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock),
+              const Text(
+                'Đăng nhập',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.deepPurple,
+                ),
               ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 32),
+              const SizedBox(height: 32),
 
-            // Login Button / Loading Indicator
-            SizedBox(
-              width: double.infinity,
-              child: isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      onPressed: _handleLogin,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+              // --- FORM ĐĂNG NHẬP ---
+              Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    // Email Input
+                    TextFormField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: "Email",
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.email),
                       ),
-                      child: const Text(
-                        "Đăng nhập",
-                        style: TextStyle(fontSize: 18),
-                      ),
+                      validator: (value) {
+                        if (value == null || !value.contains('@')) {
+                          return 'Email không hợp lệ';
+                        }
+                        return null;
+                      },
                     ),
-            ),
-          ],
+                    const SizedBox(height: 16),
+
+                    // Password Input
+                    TextFormField(
+                      controller: passwordController,
+                      decoration: const InputDecoration(
+                        labelText: "Mật khẩu",
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.lock),
+                      ),
+                      obscureText: true,
+                      validator: (value) {
+                        if (value == null || value.length < 6) {
+                          return 'Mật khẩu phải có ít nhất 6 ký tự';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Login Button / Loading Indicator
+                    SizedBox(
+                      width: double.infinity,
+                      child: isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : ElevatedButton(
+                              onPressed: _handleLogin,
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 15,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                backgroundColor: Colors.deepPurple,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text(
+                                "Đăng nhập",
+                                style: TextStyle(fontSize: 18),
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
