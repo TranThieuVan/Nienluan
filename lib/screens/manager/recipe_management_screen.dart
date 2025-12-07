@@ -397,11 +397,14 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addIngredient,
-        backgroundColor: Colors.orange,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 45), // tăng giảm tùy ý
+        child: FloatingActionButton(
+          onPressed: _addIngredient,
+          backgroundColor: Colors.orange,
+          foregroundColor: Colors.white,
+          child: const Icon(Icons.add),
+        ),
       ),
     );
   }
