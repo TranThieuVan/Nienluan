@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/models/schedule_view.dart]
-
 import 'package:myshop/models/schedule_exception.dart';
 import 'package:myshop/models/staff_profile.dart';
 import 'package:intl/intl.dart';

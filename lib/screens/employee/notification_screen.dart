@@ -1,5 +1,3 @@
-// [CẬP NHẬT FILE: lib/screens/employee/notification_screen.dart]
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:myshop/models/notification.dart';

@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/manage_menu.dart]
-
 import 'package:flutter/material.dart';
 import 'package:myshop/models/menu_item.dart';
 import 'package:myshop/services/pocketbase_service.dart';

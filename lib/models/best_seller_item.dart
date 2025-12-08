@@ -1,5 +1,3 @@
-// [FILE MỚI: lib/models/best_seller_item.dart]
-
 import 'package:myshop/models/menu_item.dart';
 
 class BestSellerItem {

@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/manager_home.dart]
-
 import 'package:flutter/material.dart';
 import 'package:myshop/screens/auth/login_screen.dart';
 import 'package:myshop/services/pocketbase_service.dart';

@@ -1,5 +1,3 @@
-// [FILE: lib/models/ingredient_batch.dart]
-
 import 'package:pocketbase/pocketbase.dart';
 
 class IngredientBatch {

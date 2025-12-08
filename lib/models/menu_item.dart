@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/models/menu_item.dart]
-
 import 'package:pocketbase/pocketbase.dart';
 
 enum MenuItemCategory { food, drink }

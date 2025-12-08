@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/models/order_item_view.dart]
-
 import 'package:myshop/models/menu_item.dart';
 
 /// Lớp này là một "View Model" đặc biệt,

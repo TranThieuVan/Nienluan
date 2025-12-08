@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/employee/employee_profile_screen.dart]
-
 import 'package:flutter/material.dart';
 import 'package:myshop/models/staff_profile.dart';
 import 'package:myshop/services/pocketbase_service.dart';

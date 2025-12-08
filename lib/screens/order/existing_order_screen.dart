@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/order/existing_order_screen.dart]
-
 import 'package:flutter/material.dart';
 import 'package:myshop/models/table.dart';
 import 'package:myshop/models/order.dart';

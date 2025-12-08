@@ -1,5 +1,3 @@
-// *** MODEL VIEW CHO HÓA ĐƠN HOÀN THÀNH (Nên chuyển ra file riêng) ***
-// LƯU Ý: Lớp này nên được chuyển sang file riêng (ví dụ: lib/models/order_view.dart)
 import 'package:pocketbase/pocketbase.dart';
 import 'order.dart'; // Giả định bạn có model Order trong file này
 

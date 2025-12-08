@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/employee/schedule_screen.dart]
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:myshop/models/schedule_exception.dart';

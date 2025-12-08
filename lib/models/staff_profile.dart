@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/models/staff_profile.dart]
-
 import 'package:pocketbase/pocketbase.dart';
 import 'package:myshop/models/staff_role.dart';
 import 'package:myshop/models/user.dart';

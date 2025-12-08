@@ -1,5 +1,3 @@
-// [DÁN TOÀN BỘ CODE NÀY VÀO lib/screens/manager/recipe_management_screen.dart]
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:myshop/models/ingredient.dart';

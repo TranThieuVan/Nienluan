@@ -1,5 +1,3 @@
-// [TẠO FILE MỚI: lib/models/ingredient.dart]
-
 import 'package:pocketbase/pocketbase.dart';
 
 class Ingredient {
