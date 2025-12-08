@@ -28,7 +28,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   ScheduleView? _scheduleView;
   late Future<void> _loadScheduleFuture;
 
-  // --- SỬA Ở ĐÂY ---
   // Lưu profile vào state để có thể cập nhật
   late StaffProfile _currentProfile;
 
@@ -40,10 +39,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
     // Tải dữ liệu ngoại lệ khi mở màn hình
     // _loadExceptions giờ sẽ tự tạo _scheduleView
-    _loadScheduleFuture = _loadScheduleData(_focusedDay); // <-- SỬA Ở ĐÂY
+    _loadScheduleFuture = _loadScheduleData(_focusedDay);
   }
 
-  // --- HÀM NÀY ĐÃ ĐƯỢC SỬA LẠI (SỬA LỖI KHÔNG HIỂN THỊ) ---
   // Tải cả Profile (lịch cố định) VÀ Ngoại lệ
   Future<void> _loadScheduleData(DateTime date) async {
     // Tải dữ liệu +/- 1 tháng xung quanh ngày được chọn
